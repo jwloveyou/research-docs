@@ -197,6 +197,10 @@ class NTCF_SGL(AbstractRecommender):
         # Hyper-parameters for NTCF
         self.ntcf_enable = int(config["ntcf_enable"]) if "ntcf_enable" in config else 0
         self.ntcf_tau = float(config["ntcf_tau"]) if "ntcf_tau" in config else 0.1
+        # ntcf_center: subtract the mean of kappa (per-side) before thresholding.
+        # Needed on bipartite CF graphs, where the asymmetric user/item degree
+        # distributions make raw kappa systematically positive.
+        self.ntcf_center = int(config["ntcf_center"]) if "ntcf_center" in config else 0
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -205,7 +209,8 @@ class NTCF_SGL(AbstractRecommender):
         self.model_str = '#layers=%d-reg=%.0e' % (self.n_layers, self.reg)
         self.model_str += '/ratio=%.1f-mode=%s-temp=%.2f-reg=%.0e' % (
             self.ssl_ratio, self.ssl_mode, self.ssl_temp, self.ssl_reg)
-        self.model_str += '/ntcf=%d-tau=%.2f' % (self.ntcf_enable, self.ntcf_tau)
+        self.model_str += '/ntcf=%d-tau=%.2f-center=%d' % (
+            self.ntcf_enable, self.ntcf_tau, self.ntcf_center)
         self.pretrain_flag = config["pretrain_flag"]
         if self.pretrain_flag:
             self.epochs = 0
@@ -237,6 +242,9 @@ class NTCF_SGL(AbstractRecommender):
             eps = 1e-8
             kappa_user = (user_nbr_deg - user_deg) / (user_nbr_deg + user_deg + eps)
             kappa_item = (item_nbr_deg - item_deg) / (item_nbr_deg + item_deg + eps)
+            if self.ntcf_center:
+                kappa_user = kappa_user - kappa_user.mean()
+                kappa_item = kappa_item - kappa_item.mean()
             kappa = np.concatenate([kappa_user, kappa_item])
             delta = np.zeros_like(kappa)
             delta[kappa < -self.ntcf_tau] = 1.0
