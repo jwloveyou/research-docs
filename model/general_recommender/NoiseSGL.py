@@ -174,6 +174,7 @@ class NoiseSGL(AbstractRecommender):
         self.mlc_layer_weight = config["mlc_layer_weight"] if "mlc_layer_weight" in config else "uniform"
         self.ssl_degree_alpha = config["ssl_degree_alpha"] if "ssl_degree_alpha" in config else 0.5
         self.noise_eps = config["noise_eps"] if "noise_eps" in config else 0.1
+        self.use_mlc = config["use_mlc"] if "use_mlc" in config else 1
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -308,45 +309,46 @@ class NoiseSGL(AbstractRecommender):
                 clogits_user = torch.logsumexp(ssl_logits_user / self.ssl_temp, dim=1)
                 clogits_item = torch.logsumexp(ssl_logits_item / self.ssl_temp, dim=1)
                 infonce_loss = torch.sum(clogits_user + clogits_item)
-                # DMLC: warm up SSL and emphasize deeper propagation layers.
-                layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
-                                                        perturb=True, eps=self.noise_eps)
-                layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
-                                                        perturb=True, eps=self.noise_eps)
+                # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
+                if self.use_mlc:
+                    layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
+                                                            perturb=True, eps=self.noise_eps)
+                    layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
+                                                            perturb=True, eps=self.noise_eps)
 
-                mlc_loss = 0.0
-                n_layers = self.lightgcn.n_layers + 1
-                start_layer = min(max(int(self.mlc_start_layer), 0), n_layers - 1)
-                active_layers = list(range(start_layer, n_layers))
-                if self.mlc_layer_weight == "linear":
-                    layer_weights = np.arange(1, len(active_layers) + 1, dtype=np.float32)
-                elif self.mlc_layer_weight == "deep":
-                    layer_weights = np.array(active_layers, dtype=np.float32) + 1.0
-                else:
-                    layer_weights = np.ones(len(active_layers), dtype=np.float32)
-                layer_weights = layer_weights / layer_weights.sum()
+                    mlc_loss = 0.0
+                    n_layers = self.lightgcn.n_layers + 1
+                    start_layer = min(max(int(self.mlc_start_layer), 0), n_layers - 1)
+                    active_layers = list(range(start_layer, n_layers))
+                    if self.mlc_layer_weight == "linear":
+                        layer_weights = np.arange(1, len(active_layers) + 1, dtype=np.float32)
+                    elif self.mlc_layer_weight == "deep":
+                        layer_weights = np.array(active_layers, dtype=np.float32) + 1.0
+                    else:
+                        layer_weights = np.ones(len(active_layers), dtype=np.float32)
+                    layer_weights = layer_weights / layer_weights.sum()
 
-                for weight, li in zip(layer_weights, active_layers):
-                    u1, i1 = layers2_v1[li]
-                    u2, i2 = layers2_v2[li]
-                    u1n, i1n = F.normalize(u1, dim=1), F.normalize(i1, dim=1)
-                    u2n, i2n = F.normalize(u2, dim=1), F.normalize(i2, dim=1)
-                    bu1 = F.embedding(bat_users, u1n)
-                    bi1 = F.embedding(bat_pos_items, i1n)
-                    bu2 = F.embedding(bat_users, u2n)
-                    bi2 = F.embedding(bat_pos_items, i2n)
-                    pu = inner_product(bu1, bu2)
-                    pi = inner_product(bi1, bi2)
-                    tu = torch.matmul(bu1, u2n.T)
-                    ti = torch.matmul(bi1, i2n.T)
-                    su = tu - pu[:, None]
-                    si = ti - pi[:, None]
-                    cu = torch.logsumexp(su / self.ssl_temp, dim=1)
-                    ci = torch.logsumexp(si / self.ssl_temp, dim=1)
-                    u_weight = torch.index_select(self.user_ssl_weights, 0, bat_users)
-                    i_weight = torch.index_select(self.item_ssl_weights, 0, bat_pos_items)
-                    mlc_loss += float(weight) * torch.sum((cu * u_weight) + (ci * i_weight))
-                infonce_loss = infonce_loss + mlc_loss
+                    for weight, li in zip(layer_weights, active_layers):
+                        u1, i1 = layers2_v1[li]
+                        u2, i2 = layers2_v2[li]
+                        u1n, i1n = F.normalize(u1, dim=1), F.normalize(i1, dim=1)
+                        u2n, i2n = F.normalize(u2, dim=1), F.normalize(i2, dim=1)
+                        bu1 = F.embedding(bat_users, u1n)
+                        bi1 = F.embedding(bat_pos_items, i1n)
+                        bu2 = F.embedding(bat_users, u2n)
+                        bi2 = F.embedding(bat_pos_items, i2n)
+                        pu = inner_product(bu1, bu2)
+                        pi = inner_product(bi1, bi2)
+                        tu = torch.matmul(bu1, u2n.T)
+                        ti = torch.matmul(bi1, i2n.T)
+                        su = tu - pu[:, None]
+                        si = ti - pi[:, None]
+                        cu = torch.logsumexp(su / self.ssl_temp, dim=1)
+                        ci = torch.logsumexp(si / self.ssl_temp, dim=1)
+                        u_weight = torch.index_select(self.user_ssl_weights, 0, bat_users)
+                        i_weight = torch.index_select(self.item_ssl_weights, 0, bat_pos_items)
+                        mlc_loss += float(weight) * torch.sum((cu * u_weight) + (ci * i_weight))
+                    infonce_loss = infonce_loss + mlc_loss
 
                 if self.ssl_warmup_epochs > 0:
                     ssl_weight = min(1.0, float(epoch) / float(self.ssl_warmup_epochs))
