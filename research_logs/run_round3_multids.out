@@ -1,0 +1,1 @@
+/home/Yehaikun/SGL-Torch/research_logs/run_round3_multids.sh: line 10: 93177 Terminated              python main.py --recommender=NoiseSGL --dataset=amazon-book --seed=42 --epochs=1 --verbose=1 --stop_cnt=20 --freq_scaler=0 > research_logs/smoke_amazon.log 2>&1

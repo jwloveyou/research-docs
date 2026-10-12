@@ -1,0 +1,12 @@
+clean driver start 2026年 10月 13日 星期二 02:40:29 CST
+START amazon-book ctrl epochs=15 2026年 10月 13日 星期二 02:40:29 CST
+OK    amazon-book ctrl 2026年 10月 13日 星期二 03:37:27 CST
+START gowalla ctrl epochs=15 2026年 10月 13日 星期二 03:37:27 CST
+OK    gowalla ctrl 2026年 10月 13日 星期二 03:44:44 CST
+START amazon-book freq_low epochs=15 2026年 10月 13日 星期二 03:44:44 CST
+OK    amazon-book freq_low 2026年 10月 13日 星期二 04:38:37 CST
+START gowalla freq_low epochs=15 2026年 10月 13日 星期二 04:38:37 CST
+OK    gowalla freq_low 2026年 10月 13日 星期二 04:45:51 CST
+START yelp2018 freq_low_e30 epochs=30 2026年 10月 13日 星期二 04:45:51 CST
+OK    yelp2018 freq_low_e30 2026年 10月 13日 星期二 05:10:42 CST
+clean driver done 2026年 10月 13日 星期二 05:10:42 CST

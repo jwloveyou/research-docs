@@ -44,6 +44,9 @@ class _LightGCN(nn.Module):
         self.dropout = nn.Dropout(0.1)
         self._user_embeddings_final = None
         self._item_embeddings_final = None
+        # Round-3: SimGCF frequency-signal-scaler layer weights (None -> uniform mean).
+        self.freq_alphas = None
+        self.freq_flip = False
 
         # # weight initialization
         # self.reset_parameters()
@@ -121,8 +124,17 @@ class _LightGCN(nn.Module):
                 layer_list.append((u, i))
             return layer_list
 
-        all_embeddings = torch.stack(all_embeddings, dim=1).mean(dim=1)
+        if self.freq_alphas is not None:
+            # SimGCF frequency signal scaler: weighted (not uniform) layer aggregation,
+            # weights = fitted monomial coefficients of g(lambda)*f(lambda), normalized.
+            w = self.freq_alphas.to(ego_embeddings.device).view(1, -1, 1)
+            all_embeddings = (torch.stack(all_embeddings, dim=1) * w).sum(dim=1)
+        else:
+            all_embeddings = torch.stack(all_embeddings, dim=1).mean(dim=1)
         user_embeddings, item_embeddings = torch.split(all_embeddings, [self.num_users, self.num_items], dim=0)
+        if self.freq_flip:
+            # "space flip" of the high-pass SimGCF variant
+            user_embeddings = -user_embeddings
 
         return user_embeddings, item_embeddings
 
@@ -179,6 +191,17 @@ class NoiseSGL(AbstractRecommender):
         self.neg_mode = config["neg_mode"] if "neg_mode" in config else "uniform"
         assert self.neg_mode in ["uniform", "semihard"]
         self.neg_K = int(config["neg_K"]) if "neg_K" in config else 5
+        # Round-3: SimGCF frequency signal scaler (arXiv:2512.15744)
+        self.freq_scaler = int(config["freq_scaler"]) if "freq_scaler" in config else 0
+        self.freq_type = config["freq_type"] if "freq_type" in config else "low"
+        assert self.freq_type in ["low", "high"]
+        self.freq_alpha = float(config["freq_alpha"]) if "freq_alpha" in config else -3.0
+        self.freq_beta = float(config["freq_beta"]) if "freq_beta" in config else 1.0
+        self.freq_mu = float(config["freq_mu"]) if "freq_mu" in config else 1.0
+        self.freq_a = float(config["freq_a"]) if "freq_a" in config else 2.0
+        self.freq_b = float(config["freq_b"]) if "freq_b" in config else 1.1
+        self.freq_norm = int(config["freq_norm"]) if "freq_norm" in config else 1
+        self.freq_mix = float(config["freq_mix"]) if "freq_mix" in config else 1.0
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -232,6 +255,22 @@ class NoiseSGL(AbstractRecommender):
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
+        if self.freq_scaler:
+            alphas = self._fit_freq_alphas()
+            if self.freq_norm:
+                alphas = alphas / np.abs(alphas).mean()
+            w = alphas / (self.n_layers + 1)
+            if self.freq_mix < 1.0:
+                # blend the scaler waveform with the uniform (all-pass) LightGCN filter
+                uniform = np.ones_like(w) / (self.n_layers + 1)
+                w = (1.0 - self.freq_mix) * uniform + self.freq_mix * w
+            if self.freq_type == "high":
+                w = np.array([((-1) ** (i + 1)) * a for i, a in enumerate(w)])
+                self.lightgcn.freq_flip = True
+            # fold the 1/(L+1) mean into the weights so all-ones == uniform LightGCN
+            self.lightgcn.freq_alphas = torch.tensor(w, dtype=torch.float32)
+            self.logger.info("[freq-scaler] type=%s alphas=%s" % (
+                self.freq_type, np.round(self.lightgcn.freq_alphas.cpu().numpy(), 4).tolist()))
         if self.pretrain_flag:
             self.lightgcn.reset_parameters(pretrain=self.pretrain_flag, dir=self.save_dir)
         else:
@@ -281,6 +320,46 @@ class NoiseSGL(AbstractRecommender):
         adj_matrix = norm_adj_tmp.dot(d_mat_inv)
 
         return adj_matrix
+
+    @staticmethod
+    def _jacobi_conv(n, x, alphas, a=1.0, b=1.0, l=-1.0, r=1.0):
+        """Jacobi polynomial basis filter (ported from SimGCF PolyConv.py)."""
+        x = np.asarray(x, dtype=np.float64)
+        y = np.zeros_like(x)
+        x1 = np.ones_like(x)
+        y += alphas[0] * x1
+        coef1 = (a - b) / 2 - (a + b + 2) / 2 * (l + r) / (r - l)
+        coef2 = (a + b + 2) / (r - l)
+        x2 = coef1 + coef2 * x
+        y += alphas[1] * x2
+        X = [x1, x2]
+        for i in range(2, n):
+            coef_l = 2 * i * (i + a + b) * (2 * i - 2 + a + b)
+            c1 = (2 * i + a + b - 1) * (2 * i + a + b) * (2 * i + a + b - 2)
+            c2 = (2 * i + a + b - 1) * (a ** 2 - b ** 2)
+            c3 = 2 * (i - 1 + a) * (i - 1 + b) * (2 * i + a + b)
+            t1, t2, t3 = c1 / coef_l, c2 / coef_l, c3 / coef_l
+            t1_2 = t1 * (2 / (r - l))
+            t2_2 = t1 * ((r + l) / (r - l)) + t2
+            nx = t1_2 * (x * X[-1]) + t2_2 * X[-1] - t3 * X[-2]
+            X.append(nx)
+            y += alphas[i] * nx
+        return y / n
+
+    def _fit_freq_alphas(self):
+        """Fit monomial coefficients a_i s.t. sum_i a_i*lambda^i ~= g(lambda)*Jacobi(lambda),
+        where g is the SimGCF sigmoid frequency signal scaler and the Jacobi filter is the
+        backbone (all-ones coefficients). Solved exactly by least squares over lambda in [-1,1]
+        (equivalent to the Adam fit in SimGCF's fit_filter.py, but closed form).
+        """
+        n = self.n_layers + 1
+        x = np.arange(-1.0, 1.0, 0.0001)
+        jac = self._jacobi_conv(n, x, [1.0] * n, self.freq_a, self.freq_b)
+        g = self.freq_mu / (1.0 + np.exp(self.freq_alpha * (x + self.freq_beta)))
+        target = g * jac
+        A = np.vstack([x ** i for i in range(n)]).T
+        alphas, *_ = np.linalg.lstsq(A, target, rcond=None)
+        return alphas
 
     @staticmethod
     def _pick_semihard(sc, pos_sc, valid):
