@@ -211,6 +211,13 @@ class NoiseSGL(AbstractRecommender):
         # Round-4: scope of the scaler (1/1 = Round-3 behaviour).
         self.freq_on_main = int(config["freq_on_main"]) if "freq_on_main" in config else 1
         self.freq_on_views = int(config["freq_on_views"]) if "freq_on_views" in config else 1
+        # Round-5: NT-SSM (arXiv:2605.24015) type-aware neighbour-pair reweighting,
+        # operationalised (simplified) as a per-pair structural-type weight on the BPR
+        # gradient. Type = popularity stratum of the (user,item) positive pair; the
+        # propagation filter is deliberately NOT touched (respects the Round-4 finding
+        # that main/view filters must stay identical). Default off -> backward compatible.
+        self.nt_ssm = int(config["nt_ssm"]) if "nt_ssm" in config else 0
+        self.nt_ssm_alpha = float(config["nt_ssm_alpha"]) if "nt_ssm_alpha" in config else 0.5
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -251,6 +258,7 @@ class NoiseSGL(AbstractRecommender):
 
         self.num_users, self.num_items, self.num_ratings = self.dataset.num_users, self.dataset.num_items, self.dataset.num_train_ratings
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.nt_ssm_w = None
         user_degree = np.array(self.dataset.train_csr_mat.sum(1)).reshape(-1).astype(np.float32)
         item_degree = np.array(self.dataset.train_csr_mat.sum(0)).reshape(-1).astype(np.float32)
         self.user_ssl_weights = np.power(user_degree + 1.0, -float(self.ssl_degree_alpha))
@@ -259,6 +267,20 @@ class NoiseSGL(AbstractRecommender):
         self.item_ssl_weights = self.item_ssl_weights / self.item_ssl_weights.mean()
         self.user_ssl_weights = torch.from_numpy(self.user_ssl_weights).float().to(self.device)
         self.item_ssl_weights = torch.from_numpy(self.item_ssl_weights).float().to(self.device)
+        if self.nt_ssm:
+            # Precompute one weight per training positive pair: w = (deg_u+1)^-a * (deg_i+1)^-a,
+            # normalised to mean 1 so the overall BPR scale is unchanged. Low-degree (tail)
+            # neighbour pairs receive a larger share of the gradient (the "type-aware" part).
+            npairs = self.dataset.train_data.to_user_item_pairs()
+            pu = npairs[:, 0].astype(np.int64)
+            pi = npairs[:, 1].astype(np.int64)
+            w = np.power(user_degree[pu] + 1.0, -self.nt_ssm_alpha) * \
+                np.power(item_degree[pi] + 1.0, -self.nt_ssm_alpha)
+            w = (w / w.mean()).astype(np.float32)
+            ni = int(self.num_items)
+            self.nt_ssm_w = {int(pu[k]) * ni + int(pi[k]): float(w[k]) for k in range(len(pu))}
+            self.logger.info("[nt-ssm] alpha=%.2f pairs=%d w[min/mean/max]=%.3f/%.3f/%.3f" % (
+                self.nt_ssm_alpha, len(pu), float(w.min()), float(w.mean()), float(w.max())))
         adj_matrix = self.create_adj_mat()
         adj_matrix = sp_mat_to_sp_tensor(adj_matrix).to(self.device)
 
@@ -454,8 +476,16 @@ class NoiseSGL(AbstractRecommender):
                 sup_logits, ssl_logits_user, ssl_logits_item = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=self.noise_eps)
                 
-                # BPR Loss
-                bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
+                # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
+                if self.nt_ssm_w is not None:
+                    keys = bat_users.detach().cpu().numpy().astype(np.int64) * np.int64(self.num_items) \
+                        + bat_pos_items.detach().cpu().numpy().astype(np.int64)
+                    pw = np.fromiter((self.nt_ssm_w.get(int(k), 1.0) for k in keys),
+                                     dtype=np.float32, count=len(keys))
+                    pw = torch.from_numpy(pw).to(self.device)
+                    bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
+                else:
+                    bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
 
                 # Reg Loss
                 reg_loss = l2_loss(

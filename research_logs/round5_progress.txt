@@ -1,0 +1,6 @@
+BEGIN 2026年 10月 13日 星期二 05:57:34 CST
+START ntssm_ctrl 2026年 10月 13日 星期二 05:57:34 CST
+END   ntssm_ctrl rc=0 2026年 10月 13日 星期二 06:09:45 CST
+START ntssm_a05 2026年 10月 13日 星期二 06:09:45 CST
+END   ntssm_a05 rc=0 2026年 10月 13日 星期二 06:22:27 CST
+ALLDONE
