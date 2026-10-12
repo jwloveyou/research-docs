@@ -47,6 +47,11 @@ class _LightGCN(nn.Module):
         # Round-3: SimGCF frequency-signal-scaler layer weights (None -> uniform mean).
         self.freq_alphas = None
         self.freq_flip = False
+        # Round-4: where the scaler is applied. main = prediction branch (also used at
+        # eval); views = the two contrastive SSL branches. Enables isolating WHICH branch
+        # caused Round-3's slow convergence (arXiv:2512.15744 drop-in on NoiseSGL).
+        self.freq_on_main = True
+        self.freq_on_views = True
 
         # # weight initialization
         # self.reset_parameters()
@@ -65,10 +70,10 @@ class _LightGCN(nn.Module):
             init(self.item_embeddings.weight)
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
-        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj)
+        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main)
         # NoiseSGL: two independent noisy views over the SAME full graph (ignore sub-graphs).
-        user_embeddings1, item_embeddings1 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps)
-        user_embeddings2, item_embeddings2 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps)
+        user_embeddings1, item_embeddings1 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps, use_freq=self.freq_on_views)
+        user_embeddings2, item_embeddings2 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps, use_freq=self.freq_on_views)
 
         # Normalize embeddings learnt from sub-graph to construct SSL loss
         user_embeddings1 = F.normalize(user_embeddings1, dim=1)
@@ -100,7 +105,7 @@ class _LightGCN(nn.Module):
 
         return sup_logits, ssl_logits_user, ssl_logits_item
 
-    def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0):
+    def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
         all_embeddings = [ego_embeddings]
 
@@ -124,7 +129,7 @@ class _LightGCN(nn.Module):
                 layer_list.append((u, i))
             return layer_list
 
-        if self.freq_alphas is not None:
+        if self.freq_alphas is not None and (use_freq is None or use_freq):
             # SimGCF frequency signal scaler: weighted (not uniform) layer aggregation,
             # weights = fitted monomial coefficients of g(lambda)*f(lambda), normalized.
             w = self.freq_alphas.to(ego_embeddings.device).view(1, -1, 1)
@@ -148,7 +153,8 @@ class _LightGCN(nn.Module):
 
     def eval(self):
         super(_LightGCN, self).eval()
-        self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(self.norm_adj)
+        self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
+            self.norm_adj, use_freq=self.freq_on_main)
 
 
 class NoiseSGL(AbstractRecommender):
@@ -202,6 +208,9 @@ class NoiseSGL(AbstractRecommender):
         self.freq_b = float(config["freq_b"]) if "freq_b" in config else 1.1
         self.freq_norm = int(config["freq_norm"]) if "freq_norm" in config else 1
         self.freq_mix = float(config["freq_mix"]) if "freq_mix" in config else 1.0
+        # Round-4: scope of the scaler (1/1 = Round-3 behaviour).
+        self.freq_on_main = int(config["freq_on_main"]) if "freq_on_main" in config else 1
+        self.freq_on_views = int(config["freq_on_views"]) if "freq_on_views" in config else 1
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -255,6 +264,8 @@ class NoiseSGL(AbstractRecommender):
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
+        self.lightgcn.freq_on_main = bool(self.freq_on_main)
+        self.lightgcn.freq_on_views = bool(self.freq_on_views)
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
             if self.freq_norm:
@@ -269,8 +280,9 @@ class NoiseSGL(AbstractRecommender):
                 self.lightgcn.freq_flip = True
             # fold the 1/(L+1) mean into the weights so all-ones == uniform LightGCN
             self.lightgcn.freq_alphas = torch.tensor(w, dtype=torch.float32)
-            self.logger.info("[freq-scaler] type=%s alphas=%s" % (
-                self.freq_type, np.round(self.lightgcn.freq_alphas.cpu().numpy(), 4).tolist()))
+            self.logger.info("[freq-scaler] type=%s on_main=%d on_views=%d alphas=%s" % (
+                self.freq_type, self.freq_on_main, self.freq_on_views,
+                np.round(self.lightgcn.freq_alphas.cpu().numpy(), 4).tolist()))
         if self.pretrain_flag:
             self.lightgcn.reset_parameters(pretrain=self.pretrain_flag, dir=self.save_dir)
         else:

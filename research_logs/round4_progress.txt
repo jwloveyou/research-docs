@@ -1,0 +1,7 @@
+START yelp2018 freq_views_only 2026年 10月 13日 星期二 05:17:37 CST
+END   yelp2018 freq_views_only rc=0 2026年 10月 13日 星期二 05:30:10 CST
+START gowalla freq_views_only 2026年 10月 13日 星期二 05:30:10 CST
+END   gowalla freq_views_only rc=0 2026年 10月 13日 星期二 05:37:13 CST
+START yelp2018 freq_main_only 2026年 10月 13日 星期二 05:37:13 CST
+END   yelp2018 freq_main_only rc=0 2026年 10月 13日 星期二 05:49:35 CST
+ALLDONE
