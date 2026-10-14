@@ -55,6 +55,12 @@ class _LightGCN(nn.Module):
         # Round-6: view composition (see NoiseSGL.__init__). Set on the backbone module.
         self.view_mix = "nn"
         self.ssl_temp = 0.2
+        # Round-7: LightGCL-style *global* collaborative view, built from a truncated
+        # SVD of the normalised adjacency (A ~= U_q diag(S_q) V_q^T). Stored in low-rank
+        # factors because densifying an n x n matrix would need tens of GBs.
+        self.gl_U = None    # [n, q]
+        self.gl_S = None    # [q]
+        self.gl_Vt = None   # [q, n]
 
         # # weight initialization
         # self.reset_parameters()
@@ -75,23 +81,26 @@ class _LightGCN(nn.Module):
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main)
 
-        # Round-6: build a list of contrastive views. All views share the SAME LightGCN
-        # propagation operator; they differ only in the injected stochasticity
-        # (embedding-space noise vs edge-dropout structure), which respects the Round-4
-        # finding that the view/main propagation filters must stay identical.
+        # Round-6/7: build a list of contrastive views. Each view uses the SAME LightGCN
+        # operator family; only the injected stochasticity / operator differs:
+        #   n = embedding-space noise (SimGCL/XSimGCL), e = edge-dropout structure (SGL),
+        #   g = truncated-SVD global collaborative view (LightGCL, Round-7).
+        # String order is respected; "nn"/"ne"/"nee" reproduce the Round-6 numerics.
         views = []  # each entry: (normalised user-emb, normalised item-emb)
-        if self.view_mix in ("nn", "ne", "nee"):
-            n_noise = 2 if self.view_mix in ("nn", "nee") else 1
-            for _ in range(n_noise):
+        n_ed = 0
+        for ch in self.view_mix:
+            if ch == "n":
                 ue, ie = self._forward_gcn(self.norm_adj, perturb=True, eps=eps,
                                            use_freq=self.freq_on_views)
-                views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
-        if self.view_mix in ("ne", "nee", "ee"):
-            n_ed = 2 if self.view_mix == "ee" else 1
-            for k in range(n_ed):
-                adj = sub_graph1 if k == 0 else sub_graph2
+            elif ch == "e":
+                adj = sub_graph1 if n_ed == 0 else sub_graph2
+                n_ed += 1
                 ue, ie = self._forward_gcn(adj, perturb=False, use_freq=self.freq_on_views)
-                views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
+            elif ch == "g":
+                ue, ie = self._forward_gcn(None, use_gl=True, use_freq=self.freq_on_views)
+            else:
+                raise ValueError("unknown view char %r" % ch)
+            views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
 
         user_embs = F.embedding(users, user_embeddings)
         item_embs = F.embedding(items, item_embeddings)
@@ -124,12 +133,21 @@ class _LightGCN(nn.Module):
 
         return sup_logits, infonce
 
-    def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None):
+    def _apply_global(self, x):
+        """Global-view propagation with the rank-q SVD approximation of the normalised
+        adjacency: (U_q diag(S_q) V_q^T) x, evaluated in low-rank form (O(n*q*d)) so the
+        dense n x n reconstruction is never materialised."""
+        return self.gl_U @ (self.gl_S.unsqueeze(1) * (self.gl_Vt @ x))
+
+    def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
+                     use_gl=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
         all_embeddings = [ego_embeddings]
 
         for k in range(self.n_layers):
-            if isinstance(norm_adj, list):
+            if use_gl:
+                ego_embeddings = self._apply_global(ego_embeddings)
+            elif isinstance(norm_adj, list):
                 ego_embeddings = torch_sp.mm(norm_adj[k], ego_embeddings)
             else:
                 ego_embeddings = torch_sp.mm(norm_adj, ego_embeddings)
@@ -242,8 +260,15 @@ class NoiseSGL(AbstractRecommender):
         #   "ne"  = one noise view + one edge-dropout structural view (SGL-style)
         #   "nee" = two noise views + one edge-dropout view (3 views, averaged pairwise InfoNCE)
         #   "ee"  = two edge-dropout views
+        # Round-7: view_mix generalised to a string over {n: embedding-noise, e: edge-
+        # dropout structural, g: SVD global}. "nn" (default) = backward compatible.
         self.view_mix = str(config["view_mix"]) if "view_mix" in config else "nn"
-        assert self.view_mix in ["nn", "ne", "nee", "ee"]
+        assert len(self.view_mix) >= 1 and all(c in "neg" for c in self.view_mix), \
+            "view_mix must be a non-empty string over {n,e,g}, got %r" % self.view_mix
+        assert self.view_mix.count("e") <= 2, "at most 2 edge-dropout views supported"
+        self.use_gl = "g" in self.view_mix
+        # Rank of the truncated SVD used for the global view (LightGCL uses q=5).
+        self.gl_rank = int(config["gl_rank"]) if "gl_rank" in config else 5
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -308,15 +333,21 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[nt-ssm] alpha=%.2f pairs=%d w[min/mean/max]=%.3f/%.3f/%.3f" % (
                 self.nt_ssm_alpha, len(pu), float(w.min()), float(w.mean()), float(w.max())))
         adj_matrix = self.create_adj_mat()
+        if self.use_gl:
+            self._init_global_view(adj_matrix)
         adj_matrix = sp_mat_to_sp_tensor(adj_matrix).to(self.device)
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
+        if self.use_gl:
+            self.lightgcn.gl_U = torch.from_numpy(self.gl_U).float().to(self.device)
+            self.lightgcn.gl_S = torch.from_numpy(self.gl_S).float().to(self.device)
+            self.lightgcn.gl_Vt = torch.from_numpy(self.gl_Vt).float().to(self.device)
         self.lightgcn.freq_on_main = bool(self.freq_on_main)
         self.lightgcn.freq_on_views = bool(self.freq_on_views)
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
-        self.logger.info("[view-mix] view_mix=%s (noise/ED composition)" % self.view_mix)
+        self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
             if self.freq_norm:
@@ -339,6 +370,24 @@ class NoiseSGL(AbstractRecommender):
         else:
             self.lightgcn.reset_parameters(init_method=self.param_init)
         self.optimizer = torch.optim.Adam(self.lightgcn.parameters(), lr=self.lr)
+
+    def _init_global_view(self, adj):
+        """Truncated SVD of the (symmetric) normalised adjacency: A ~= U_q diag(S_q) V_q^T.
+        This is the LightGCL-style *denoised global* collaborative-relation operator.
+        Kept as low-rank factors; the dense n x n matrix is never formed."""
+        from scipy.sparse.linalg import svds
+        t0 = time()
+        q = int(min(self.gl_rank, min(adj.shape) - 1))
+        u, s, vt = svds(adj, k=q)
+        order = np.argsort(s)[::-1]
+        self.gl_U = np.ascontiguousarray(u[:, order], dtype=np.float32)
+        self.gl_S = np.ascontiguousarray(s[order], dtype=np.float32)
+        self.gl_Vt = np.ascontiguousarray(vt[order, :], dtype=np.float32)
+        # fraction of ||A||_F^2 captured by the top-q singular values (global-view fidelity)
+        fro2 = float(adj.multiply(adj).sum())
+        energy = float(np.sum(self.gl_S ** 2)) / max(fro2, 1e-12)
+        self.logger.info("[gl-view] rank=%d svd_time=%.1fs energy_frac=%.4f s_top=%s" % (
+            q, time() - t0, energy, np.round(self.gl_S[:5], 3).tolist()))
 
     @timer
     def create_adj_mat(self, is_subgraph=False, aug_type='ed'):
@@ -497,10 +546,11 @@ class NoiseSGL(AbstractRecommender):
             # NoiseSGL: noise views need no sub-graph; Round-6 ED views need a freshly
             # edge-dropped graph each epoch (SGL-style structural augmentation).
             sub_graph1, sub_graph2 = None, None
-            if self.view_mix in ("ne", "nee", "ee"):
+            n_ed = self.view_mix.count("e")
+            if n_ed >= 1:
                 sub_graph1 = sp_mat_to_sp_tensor(
                     self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
-                if self.view_mix == "ee":
+                if n_ed >= 2:
                     sub_graph2 = sp_mat_to_sp_tensor(
                         self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
             data_iter = self._pairwise_iter()
