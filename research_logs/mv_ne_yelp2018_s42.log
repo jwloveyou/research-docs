@@ -1,0 +1,166 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-14 23:29:50.604: my pid: 45995
+2026-10-14 23:29:50.604: model: model.general_recommender.NoiseSGL
+2026-10-14 23:29:50.604: Dataset statistics:
+Name: yelp2018
+The number of users: 31668
+The number of items: 38048
+The number of ratings: 1561406
+Average actions of users: 49.31
+Average actions of items: 41.04
+The sparsity of the dataset: 99.870412%
+
+The number of training: 1237259
+The number of validation: 0
+The number of testing: 324147
+2026-10-14 23:29:50.604: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=yelp2018
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=64
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+use_mlc=0
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=15
+batch_size=1024
+num_negatives=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=40
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=yelp2018
+seed=42
+epochs=15
+verbose=1
+stop_cnt=40
+view_mix=ne
+create_adj_mat function cost: 0.179028s
+2026-10-14 23:29:53.478: [view-mix] view_mix=ne (noise/ED composition)
+2026-10-14 23:29:54.582: metrics:	Precision@20	Recall@20   	NDCG@20     
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.655816s
+2026-10-14 23:30:40.897: [iter 1 : loss : 1.9527 = 0.6840 + 1.2686 + 0.0000, time: 46.313792]
+2026-10-14 23:30:43.981: epoch 1:	0.02216726  	0.04888324  	0.03948608  
+2026-10-14 23:30:43.981: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.917023s
+2026-10-14 23:31:30.957: [iter 2 : loss : 1.8179 = 0.6289 + 1.1889 + 0.0002, time: 46.902007]
+2026-10-14 23:31:33.479: epoch 2:	0.02271662  	0.04930872  	0.04038238  
+2026-10-14 23:31:33.479: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.876463s
+2026-10-14 23:32:20.033: [iter 3 : loss : 1.6856 = 0.4948 + 1.1903 + 0.0005, time: 46.482066]
+2026-10-14 23:32:22.605: epoch 3:	0.02537337  	0.05548648  	0.04492760  
+2026-10-14 23:32:22.605: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.861010s
+2026-10-14 23:33:08.616: [iter 4 : loss : 1.5239 = 0.3099 + 1.2128 + 0.0013, time: 45.941160]
+2026-10-14 23:33:11.132: epoch 4:	0.02616269  	0.05747164  	0.04690310  
+2026-10-14 23:33:11.132: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.860977s
+2026-10-14 23:33:57.344: [iter 5 : loss : 1.3984 = 0.1816 + 1.2147 + 0.0021, time: 46.142490]
+2026-10-14 23:33:59.827: epoch 5:	0.02733564  	0.06036272  	0.04940607  
+2026-10-14 23:33:59.827: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.737699s
+2026-10-14 23:34:45.376: [iter 6 : loss : 1.3296 = 0.1271 + 1.1996 + 0.0029, time: 45.480466]
+2026-10-14 23:34:48.364: epoch 6:	0.02816920  	0.06259038  	0.05118386  
+2026-10-14 23:34:48.364: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.927467s
+2026-10-14 23:35:35.121: [iter 7 : loss : 1.2882 = 0.0988 + 1.1858 + 0.0036, time: 46.682723]
+2026-10-14 23:35:37.602: epoch 7:	0.02862858  	0.06394859  	0.05223962  
+2026-10-14 23:35:37.602: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.851096s
+2026-10-14 23:36:24.291: [iter 8 : loss : 1.2604 = 0.0805 + 1.1757 + 0.0042, time: 46.622063]
+2026-10-14 23:36:26.790: epoch 8:	0.02903751  	0.06482437  	0.05308251  
+2026-10-14 23:36:26.791: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.878669s
+2026-10-14 23:37:13.123: [iter 9 : loss : 1.2407 = 0.0678 + 1.1682 + 0.0047, time: 46.273142]
+2026-10-14 23:37:15.597: epoch 9:	0.02943061  	0.06571021  	0.05370563  
+2026-10-14 23:37:15.597: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.859165s
+2026-10-14 23:38:02.344: [iter 10 : loss : 1.2265 = 0.0588 + 1.1624 + 0.0052, time: 46.678344]
+2026-10-14 23:38:05.006: epoch 10:	0.02956634  	0.06600700  	0.05397125  
+2026-10-14 23:38:05.006: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.836485s
+2026-10-14 23:38:51.457: [iter 11 : loss : 1.2156 = 0.0520 + 1.1579 + 0.0057, time: 46.381563]
+2026-10-14 23:38:54.223: epoch 11:	0.02967209  	0.06613881  	0.05411896  
+2026-10-14 23:38:54.223: Find a better model.
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.873059s
+2026-10-14 23:39:40.784: [iter 12 : loss : 1.2066 = 0.0462 + 1.1543 + 0.0062, time: 46.489693]
+2026-10-14 23:39:43.255: epoch 12:	0.02968477  	0.06610072  	0.05406032  
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.862339s
+2026-10-14 23:40:29.825: [iter 13 : loss : 1.1997 = 0.0419 + 1.1513 + 0.0066, time: 46.500773]
+2026-10-14 23:40:33.220: epoch 13:	0.02965794  	0.06602548  	0.05408077  
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.872509s
+2026-10-14 23:41:19.295: [iter 14 : loss : 1.1943 = 0.0385 + 1.1488 + 0.0070, time: 45.992267]
+2026-10-14 23:41:23.769: epoch 14:	0.02968479  	0.06609549  	0.05410323  
+/home/Yehaikun/SGL-Torch/model/general_recommender/NoiseSGL.py:379: RuntimeWarning: divide by zero encountered in power
+  d_inv = np.power(rowsum, -0.5).flatten()
+create_adj_mat function cost: 0.921386s
+2026-10-14 23:42:10.389: [iter 15 : loss : 1.1895 = 0.0353 + 1.1468 + 0.0073, time: 46.535453]
+2026-10-14 23:42:13.115: epoch 15:	0.02962951  	0.06594625  	0.05398085  
+2026-10-14 23:42:13.115: best_result@epoch 11:
+
+2026-10-14 23:42:13.115: 		0.0297      	0.0661      	0.0541      

@@ -52,6 +52,9 @@ class _LightGCN(nn.Module):
         # caused Round-3's slow convergence (arXiv:2512.15744 drop-in on NoiseSGL).
         self.freq_on_main = True
         self.freq_on_views = True
+        # Round-6: view composition (see NoiseSGL.__init__). Set on the backbone module.
+        self.view_mix = "nn"
+        self.ssl_temp = 0.2
 
         # # weight initialization
         # self.reset_parameters()
@@ -71,39 +74,55 @@ class _LightGCN(nn.Module):
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main)
-        # NoiseSGL: two independent noisy views over the SAME full graph (ignore sub-graphs).
-        user_embeddings1, item_embeddings1 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps, use_freq=self.freq_on_views)
-        user_embeddings2, item_embeddings2 = self._forward_gcn(self.norm_adj, perturb=True, eps=eps, use_freq=self.freq_on_views)
 
-        # Normalize embeddings learnt from sub-graph to construct SSL loss
-        user_embeddings1 = F.normalize(user_embeddings1, dim=1)
-        item_embeddings1 = F.normalize(item_embeddings1, dim=1)
-        user_embeddings2 = F.normalize(user_embeddings2, dim=1)
-        item_embeddings2 = F.normalize(item_embeddings2, dim=1)
+        # Round-6: build a list of contrastive views. All views share the SAME LightGCN
+        # propagation operator; they differ only in the injected stochasticity
+        # (embedding-space noise vs edge-dropout structure), which respects the Round-4
+        # finding that the view/main propagation filters must stay identical.
+        views = []  # each entry: (normalised user-emb, normalised item-emb)
+        if self.view_mix in ("nn", "ne", "nee"):
+            n_noise = 2 if self.view_mix in ("nn", "nee") else 1
+            for _ in range(n_noise):
+                ue, ie = self._forward_gcn(self.norm_adj, perturb=True, eps=eps,
+                                           use_freq=self.freq_on_views)
+                views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
+        if self.view_mix in ("ne", "nee", "ee"):
+            n_ed = 2 if self.view_mix == "ee" else 1
+            for k in range(n_ed):
+                adj = sub_graph1 if k == 0 else sub_graph2
+                ue, ie = self._forward_gcn(adj, perturb=False, use_freq=self.freq_on_views)
+                views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
 
         user_embs = F.embedding(users, user_embeddings)
         item_embs = F.embedding(items, item_embeddings)
         neg_item_embs = F.embedding(neg_items, item_embeddings)
-        user_embs1 = F.embedding(users, user_embeddings1)
-        item_embs1 = F.embedding(items, item_embeddings1)
-        user_embs2 = F.embedding(users, user_embeddings2)
-        item_embs2 = F.embedding(items, item_embeddings2)
 
         sup_pos_ratings = inner_product(user_embs, item_embs)       # [batch_size]
         sup_neg_ratings = inner_product(user_embs, neg_item_embs)   # [batch_size]
         sup_logits = sup_pos_ratings - sup_neg_ratings              # [batch_size]
 
-        pos_ratings_user = inner_product(user_embs1, user_embs2)    # [batch_size]
-        pos_ratings_item = inner_product(item_embs1, item_embs2)    # [batch_size]
-        tot_ratings_user = torch.matmul(user_embs1, 
-                                        torch.transpose(user_embeddings2, 0, 1))        # [batch_size, num_users]
-        tot_ratings_item = torch.matmul(item_embs1, 
-                                        torch.transpose(item_embeddings2, 0, 1))        # [batch_size, num_items]
+        # Pairwise InfoNCE over all view pairs, averaged (for view_mix="nn" this is
+        # numerically identical to the original NoiseSGL two-view InfoNCE).
+        infonce = None
+        npairs = 0
+        for a in range(len(views)):
+            ue_a, ie_a = views[a]
+            for b in range(a + 1, len(views)):
+                ue_b, ie_b = views[b]
+                bu = F.embedding(users, ue_a)
+                bi = F.embedding(items, ie_a)
+                pos_u = inner_product(bu, F.embedding(users, ue_b))
+                pos_i = inner_product(bi, F.embedding(items, ie_b))
+                tot_u = torch.matmul(bu, torch.transpose(ue_b, 0, 1))
+                tot_i = torch.matmul(bi, torch.transpose(ie_b, 0, 1))
+                cu = torch.logsumexp((tot_u - pos_u[:, None]) / self.ssl_temp, dim=1)
+                ci = torch.logsumexp((tot_i - pos_i[:, None]) / self.ssl_temp, dim=1)
+                pair_loss = torch.sum(cu + ci)
+                infonce = pair_loss if infonce is None else infonce + pair_loss
+                npairs += 1
+        infonce = infonce / max(npairs, 1)
 
-        ssl_logits_user = tot_ratings_user - pos_ratings_user[:, None]                  # [batch_size, num_users]
-        ssl_logits_item = tot_ratings_item - pos_ratings_item[:, None]                  # [batch_size, num_users]
-
-        return sup_logits, ssl_logits_user, ssl_logits_item
+        return sup_logits, infonce
 
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -218,6 +237,13 @@ class NoiseSGL(AbstractRecommender):
         # that main/view filters must stay identical). Default off -> backward compatible.
         self.nt_ssm = int(config["nt_ssm"]) if "nt_ssm" in config else 0
         self.nt_ssm_alpha = float(config["nt_ssm_alpha"]) if "nt_ssm_alpha" in config else 0.5
+        # Round-6: view-composition ablation (structural ED view vs embedding-noise view).
+        #   "nn"  = two embedding-noise views (current NoiseSGL -> default, backward compatible)
+        #   "ne"  = one noise view + one edge-dropout structural view (SGL-style)
+        #   "nee" = two noise views + one edge-dropout view (3 views, averaged pairwise InfoNCE)
+        #   "ee"  = two edge-dropout views
+        self.view_mix = str(config["view_mix"]) if "view_mix" in config else "nn"
+        assert self.view_mix in ["nn", "ne", "nee", "ee"]
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -288,6 +314,9 @@ class NoiseSGL(AbstractRecommender):
                                   adj_matrix, self.n_layers).to(self.device)
         self.lightgcn.freq_on_main = bool(self.freq_on_main)
         self.lightgcn.freq_on_views = bool(self.freq_on_views)
+        self.lightgcn.view_mix = self.view_mix
+        self.lightgcn.ssl_temp = self.ssl_temp
+        self.logger.info("[view-mix] view_mix=%s (noise/ED composition)" % self.view_mix)
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
             if self.freq_norm:
@@ -465,15 +494,22 @@ class NoiseSGL(AbstractRecommender):
         for epoch in range(1, self.epochs + 1):
             total_loss, total_bpr_loss, total_reg_loss = 0.0, 0.0, 0.0
             training_start_time = time()
-            # NoiseSGL: views come from embedding-space perturbation, no sub-graphs needed.
+            # NoiseSGL: noise views need no sub-graph; Round-6 ED views need a freshly
+            # edge-dropped graph each epoch (SGL-style structural augmentation).
             sub_graph1, sub_graph2 = None, None
+            if self.view_mix in ("ne", "nee", "ee"):
+                sub_graph1 = sp_mat_to_sp_tensor(
+                    self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
+                if self.view_mix == "ee":
+                    sub_graph2 = sp_mat_to_sp_tensor(
+                        self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
             data_iter = self._pairwise_iter()
             self.lightgcn.train()
             for bat_users, bat_pos_items, bat_neg_items in data_iter:
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
-                sup_logits, ssl_logits_user, ssl_logits_item = self.lightgcn(
+                sup_logits, infonce_loss = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=self.noise_eps)
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
@@ -494,10 +530,8 @@ class NoiseSGL(AbstractRecommender):
                     self.lightgcn.item_embeddings(bat_neg_items),
                 )
 
-                # InfoNCE Loss
-                clogits_user = torch.logsumexp(ssl_logits_user / self.ssl_temp, dim=1)
-                clogits_item = torch.logsumexp(ssl_logits_item / self.ssl_temp, dim=1)
-                infonce_loss = torch.sum(clogits_user + clogits_item)
+                # InfoNCE Loss is computed inside forward() so that >=2 views can be
+                # mixed; for view_mix="nn" it is identical to the original single pair.
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
                 if self.use_mlc:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
