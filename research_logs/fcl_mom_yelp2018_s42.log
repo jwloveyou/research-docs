@@ -1,0 +1,121 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-15 02:47:18.359: my pid: 9499
+2026-10-15 02:47:18.359: model: model.general_recommender.NoiseSGL
+2026-10-15 02:47:18.359: Dataset statistics:
+Name: yelp2018
+The number of users: 31668
+The number of items: 38048
+The number of ratings: 1561406
+Average actions of users: 49.31
+Average actions of items: 41.04
+The sparsity of the dataset: 99.870412%
+
+The number of training: 1237259
+The number of validation: 0
+The number of testing: 324147
+2026-10-15 02:47:18.359: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=yelp2018
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=64
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+use_mlc=0
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=15
+batch_size=1024
+num_negatives=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=40
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=yelp2018
+seed=42
+epochs=15
+verbose=1
+stop_cnt=40
+view_mix=nn
+fcl_mom=5.0
+create_adj_mat function cost: 0.141333s
+2026-10-15 02:47:21.700: [fcl] poly=0.000 bt=0.000 off=0.000 mom=5.000 degree=4 momentum=0.10
+2026-10-15 02:47:21.701: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-15 02:47:22.692: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-15 02:48:10.219: [iter 1 : loss : 1.8309 = 0.6697 + 1.1611 + 0.0001, time: 47.525735]
+2026-10-15 02:48:12.790: epoch 1:	0.02482896  	0.05427974  	0.04508660  
+2026-10-15 02:48:12.790: Find a better model.
+2026-10-15 02:49:01.554: [iter 2 : loss : 1.6420 = 0.4679 + 1.1735 + 0.0007, time: 48.674109]
+2026-10-15 02:49:04.056: epoch 2:	0.02774138  	0.06083291  	0.05003298  
+2026-10-15 02:49:04.056: Find a better model.
+2026-10-15 02:49:52.811: [iter 3 : loss : 1.4352 = 0.2302 + 1.2033 + 0.0017, time: 48.654624]
+2026-10-15 02:49:55.277: epoch 3:	0.02873439  	0.06339564  	0.05231731  
+2026-10-15 02:49:55.277: Find a better model.
+2026-10-15 02:50:44.043: [iter 4 : loss : 1.3331 = 0.1386 + 1.1918 + 0.0027, time: 48.648639]
+2026-10-15 02:50:46.966: epoch 4:	0.02957900  	0.06555960  	0.05406445  
+2026-10-15 02:50:46.966: Find a better model.
+2026-10-15 02:51:35.389: [iter 5 : loss : 1.2817 = 0.1011 + 1.1771 + 0.0035, time: 48.334987]
+2026-10-15 02:51:37.895: epoch 5:	0.03003685  	0.06667794  	0.05495937  
+2026-10-15 02:51:37.895: Find a better model.
+2026-10-15 02:52:26.462: [iter 6 : loss : 1.2505 = 0.0797 + 1.1667 + 0.0042, time: 48.458612]
+2026-10-15 02:52:28.955: epoch 6:	0.03039838  	0.06745092  	0.05553881  
+2026-10-15 02:52:28.955: Find a better model.
+2026-10-15 02:53:17.602: [iter 7 : loss : 1.2302 = 0.0661 + 1.1593 + 0.0048, time: 48.574021]
+2026-10-15 02:53:20.107: epoch 7:	0.03048047  	0.06775261  	0.05581661  
+2026-10-15 02:53:20.108: Find a better model.
+2026-10-15 02:54:08.552: [iter 8 : loss : 1.2156 = 0.0564 + 1.1538 + 0.0054, time: 48.330901]
+2026-10-15 02:54:11.933: epoch 8:	0.03058782  	0.06810919  	0.05593623  
+2026-10-15 02:54:11.933: Find a better model.
+2026-10-15 02:55:00.635: [iter 9 : loss : 1.2047 = 0.0491 + 1.1497 + 0.0059, time: 48.579760]
+2026-10-15 02:55:03.967: epoch 9:	0.03070783  	0.06841844  	0.05613761  
+2026-10-15 02:55:03.967: Find a better model.
+2026-10-15 02:55:52.446: [iter 10 : loss : 1.1966 = 0.0438 + 1.1465 + 0.0064, time: 48.364867]
+2026-10-15 02:55:55.559: epoch 10:	0.03057679  	0.06826469  	0.05599432  
+2026-10-15 02:56:44.320: [iter 11 : loss : 1.1900 = 0.0393 + 1.1439 + 0.0068, time: 48.677602]
+2026-10-15 02:56:46.907: epoch 11:	0.03045209  	0.06782912  	0.05583527  
+2026-10-15 02:57:35.436: [iter 12 : loss : 1.1850 = 0.0359 + 1.1419 + 0.0072, time: 48.447374]
+2026-10-15 02:57:37.919: epoch 12:	0.03043947  	0.06773429  	0.05571146  
+2026-10-15 02:58:26.677: [iter 13 : loss : 1.1807 = 0.0330 + 1.1402 + 0.0076, time: 48.665978]
+2026-10-15 02:58:29.560: epoch 13:	0.03033529  	0.06732696  	0.05551332  
+2026-10-15 02:59:17.960: [iter 14 : loss : 1.1774 = 0.0308 + 1.1387 + 0.0079, time: 48.330310]
+2026-10-15 02:59:20.468: epoch 14:	0.03023426  	0.06707990  	0.05524044  
+2026-10-15 03:00:08.020: [iter 15 : loss : 1.1743 = 0.0285 + 1.1375 + 0.0082, time: 47.465374]
+2026-10-15 03:00:11.387: epoch 15:	0.03014427  	0.06687868  	0.05506790  
+2026-10-15 03:00:11.387: best_result@epoch 9:
+
+2026-10-15 03:00:11.387: 		0.0307      	0.0684      	0.0561      

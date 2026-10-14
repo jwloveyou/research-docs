@@ -1,0 +1,6 @@
+BEGIN 2026年 10月 15日 星期四 03:14:31 CST
+START fcl_mom_s43 2026年 10月 15日 星期四 03:14:31 CST
+END   fcl_mom_s43 rc=0 2026年 10月 15日 星期四 03:27:28 CST
+START fcl_mom_s44 2026年 10月 15日 星期四 03:27:28 CST
+END   fcl_mom_s44 rc=0 2026年 10月 15日 星期四 03:40:26 CST
+ALLDONE

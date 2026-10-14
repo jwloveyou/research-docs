@@ -61,6 +61,27 @@ class _LightGCN(nn.Module):
         self.gl_U = None    # [n, q]
         self.gl_S = None    # [q]
         self.gl_Vt = None   # [q, n]
+        # Round-8: RecDCL-style feature-wise contrastive learning (FCL). Representation
+        # layer only -> does NOT touch the propagation operator (respects R4/R6). All
+        # coefficients default to 0 (module off, backward compatible).
+        self.fcl_poly = 0.0      # polynomial-kernel feature-uniformity term
+        self.fcl_bt = 0.0        # BarlowTwins-style user-item cross-correlation term
+        self.fcl_off = 0.0       # direct off-diagonal decorrelation of user & item Grams
+        self.fcl_mom = 0.0       # momentum cross-modal alignment term
+        self.fcl_a = 1.0
+        self.fcl_degree = 4
+        self.fcl_polyc = 1e-7
+        self.fcl_bt_off = 0.01
+        self.fcl_momentum = 0.1
+        d = self.embed_dim
+        # projector (MLP d->d->d, no bias, BN+ReLU) as in RecDCL; only used by FCL.
+        self.fcl_projector = nn.Sequential(
+            nn.Linear(d, d, bias=False), nn.BatchNorm1d(d), nn.ReLU(inplace=True),
+            nn.Linear(d, d, bias=False))
+        self.fcl_predictor = nn.Linear(d, d)
+        self.fcl_bn = nn.BatchNorm1d(d, affine=False)
+        self.u_target_his = None
+        self.i_target_his = None
 
         # # weight initialization
         # self.reset_parameters()
@@ -131,7 +152,65 @@ class _LightGCN(nn.Module):
                 npairs += 1
         infonce = infonce / max(npairs, 1)
 
-        return sup_logits, infonce
+        fcl_loss = None
+        if (self.fcl_poly > 0) or (self.fcl_bt > 0) or (self.fcl_off > 0) or (self.fcl_mom > 0):
+            fcl_loss = self._feature_cl_loss(users, items, user_embs, item_embs)
+
+        return sup_logits, infonce, fcl_loss
+
+    @staticmethod
+    def _off_diagonal(x):
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+    def _poly_term(self, c):
+        # RecDCL polynomial-kernel uniformity: log mean((a*C + c0)^degree). The
+        # diagonal of C is ~1 (BatchNorm-standardised dims), so minimising this drives
+        # the off-diagonal (inter-dimension) correlations to 0 -> orthogonal features.
+        v = (self.fcl_a * c + self.fcl_polyc).clamp(min=1e-12) ** self.fcl_degree
+        return v.mean().clamp(min=1e-12).log()
+
+    def _feature_cl_loss(self, users, items, user_embs, item_embs):
+        """Feature-wise contrastive (FCL) loss, applied to the *batch* of fused main
+        embeddings (representation layer only). Mirrors RecDCL (arXiv:2401.15635)."""
+        b = user_embs.size(0)
+        zu = self.fcl_bn(self.fcl_projector(F.normalize(user_embs, dim=-1)))
+        zi = self.fcl_bn(self.fcl_projector(F.normalize(item_embs, dim=-1)))
+        loss = 0.0
+        if self.fcl_poly > 0:
+            cu = zu.t() @ zu / b
+            ci = zi.t() @ zi / b
+            loss = loss + self.fcl_poly * (0.5 * self._poly_term(cu) + 0.5 * self._poly_term(ci))
+        if self.fcl_bt > 0:
+            c = zu.t() @ zi / b
+            on_diag = (torch.diagonal(c) - 1.0).pow(2).mean()
+            off_diag = self._off_diagonal(c).pow(2).mean()
+            loss = loss + self.fcl_bt * (on_diag + self.fcl_bt_off * off_diag)
+        if self.fcl_off > 0:
+            cu = zu.t() @ zu / b
+            ci = zi.t() @ zi / b
+            loss = loss + self.fcl_off * (self._off_diagonal(cu).pow(2).mean()
+                                          + self._off_diagonal(ci).pow(2).mean())
+        if self.fcl_mom > 0:
+            if self.u_target_his is None:
+                self.u_target_his = torch.randn((self.num_users, self.embed_dim),
+                                                device=user_embs.device)
+                self.i_target_his = torch.randn((self.num_items, self.embed_dim),
+                                                device=item_embs.device)
+            with torch.no_grad():
+                u_target = self.u_target_his[users].detach() * self.fcl_momentum \
+                    + user_embs.detach() * (1.0 - self.fcl_momentum)
+                i_target = self.i_target_his[items].detach() * self.fcl_momentum \
+                    + item_embs.detach() * (1.0 - self.fcl_momentum)
+                self.u_target_his[users] = user_embs.detach()
+                self.i_target_his[items] = item_embs.detach()
+            pu = self.fcl_predictor(user_embs)
+            pi = self.fcl_predictor(item_embs)
+            mom = 0.5 * (-F.cosine_similarity(pu, i_target.detach(), dim=-1).mean())
+            mom = mom + 0.5 * (-F.cosine_similarity(pi, u_target.detach(), dim=-1).mean())
+            loss = loss + self.fcl_mom * mom
+        return loss
 
     def _apply_global(self, x):
         """Global-view propagation with the rank-q SVD approximation of the normalised
@@ -262,6 +341,13 @@ class NoiseSGL(AbstractRecommender):
         #   "ee"  = two edge-dropout views
         # Round-7: view_mix generalised to a string over {n: embedding-noise, e: edge-
         # dropout structural, g: SVD global}. "nn" (default) = backward compatible.
+        # Round-8: RecDCL feature-wise CL coefficients (all default 0 = off).
+        self.fcl_poly = float(config["fcl_poly"]) if "fcl_poly" in config else 0.0
+        self.fcl_bt = float(config["fcl_bt"]) if "fcl_bt" in config else 0.0
+        self.fcl_off = float(config["fcl_off"]) if "fcl_off" in config else 0.0
+        self.fcl_mom = float(config["fcl_mom"]) if "fcl_mom" in config else 0.0
+        self.fcl_degree = int(config["fcl_degree"]) if "fcl_degree" in config else 4
+        self.fcl_momentum = float(config["fcl_momentum"]) if "fcl_momentum" in config else 0.1
         self.view_mix = str(config["view_mix"]) if "view_mix" in config else "nn"
         assert len(self.view_mix) >= 1 and all(c in "neg" for c in self.view_mix), \
             "view_mix must be a non-empty string over {n,e,g}, got %r" % self.view_mix
@@ -347,6 +433,16 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.freq_on_views = bool(self.freq_on_views)
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
+        self.lightgcn.fcl_poly = self.fcl_poly
+        self.lightgcn.fcl_bt = self.fcl_bt
+        self.lightgcn.fcl_off = self.fcl_off
+        self.lightgcn.fcl_mom = self.fcl_mom
+        self.lightgcn.fcl_degree = self.fcl_degree
+        self.lightgcn.fcl_momentum = self.fcl_momentum
+        if self.fcl_poly or self.fcl_bt or self.fcl_off or self.fcl_mom:
+            self.logger.info("[fcl] poly=%.3f bt=%.3f off=%.3f mom=%.3f degree=%d momentum=%.2f" % (
+                self.fcl_poly, self.fcl_bt, self.fcl_off, self.fcl_mom,
+                self.fcl_degree, self.fcl_momentum))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
@@ -559,7 +655,7 @@ class NoiseSGL(AbstractRecommender):
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
-                sup_logits, infonce_loss = self.lightgcn(
+                sup_logits, infonce_loss, fcl_loss = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=self.noise_eps)
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
@@ -627,7 +723,11 @@ class NoiseSGL(AbstractRecommender):
                     ssl_weight = min(1.0, float(epoch) / float(self.ssl_warmup_epochs))
                 else:
                     ssl_weight = 1.0
-                loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
+                if fcl_loss is not None:
+                    loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss \
+                        + fcl_loss + self.reg * reg_loss
+                else:
+                    loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
                 total_loss += loss
                 total_bpr_loss += bpr_loss
                 total_reg_loss += self.reg * reg_loss
