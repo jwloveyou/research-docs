@@ -73,6 +73,15 @@ class _LightGCN(nn.Module):
         self.fcl_polyc = 1e-7
         self.fcl_bt_off = 0.01
         self.fcl_momentum = 0.1
+        # Round-9: DirectAU-style alignment & uniformity (arXiv:2206.12811, KDD'22).
+        # Representation-layer only -> does NOT touch the propagation operator (respects
+        # R4/R6). Default 0 = off (backward compatible). directau_align weights the
+        # positive-pair alignment (||u-i||^2 on the unit sphere); directau_unif weights the
+        # global uniformity (log E exp(-t*d)) over sampled nodes.
+        self.directau_align = 0.0
+        self.directau_unif = 0.0
+        self.directau_t = 2.0
+        self.directau_k = 512
         d = self.embed_dim
         # projector (MLP d->d->d, no bias, BN+ReLU) as in RecDCL; only used by FCL.
         self.fcl_projector = nn.Sequential(
@@ -156,7 +165,11 @@ class _LightGCN(nn.Module):
         if (self.fcl_poly > 0) or (self.fcl_bt > 0) or (self.fcl_off > 0) or (self.fcl_mom > 0):
             fcl_loss = self._feature_cl_loss(users, items, user_embs, item_embs)
 
-        return sup_logits, infonce, fcl_loss
+        dau_loss = None
+        if (self.directau_align > 0) or (self.directau_unif > 0):
+            dau_loss = self._directau_loss(users, items, user_embeddings, item_embeddings)
+
+        return sup_logits, infonce, fcl_loss, dau_loss
 
     @staticmethod
     def _off_diagonal(x):
@@ -210,6 +223,34 @@ class _LightGCN(nn.Module):
             mom = 0.5 * (-F.cosine_similarity(pu, i_target.detach(), dim=-1).mean())
             mom = mom + 0.5 * (-F.cosine_similarity(pi, u_target.detach(), dim=-1).mean())
             loss = loss + self.fcl_mom * mom
+        return loss
+
+    def _directau_loss(self, users, items, user_embeddings, item_embeddings):
+        """DirectAU (arXiv:2206.12811) alignment & uniformity on the unit hypersphere.
+
+        alignment: minimise ||u - i||^2 over positive (user,item) pairs (sum form, so the
+        weight is on the same scale as the summed BPR/InfoNCE losses).
+        uniformity: minimise log E[exp(-t * d)] over pairs of sampled nodes (users and
+        items separately), pushing the embedding distribution toward a uniform spread on
+        the hypersphere. Only the representation layer is touched; the propagation
+        operator is untouched (respects the R4/R6 constraint).
+        """
+        u = F.normalize(user_embeddings[users], dim=1)
+        i = F.normalize(item_embeddings[items], dim=1)
+        loss = 0.0
+        if self.directau_align > 0:
+            loss = loss + self.directau_align * ((u - i) ** 2).sum()
+        if self.directau_unif > 0:
+            k = min(self.directau_k, self.num_users, self.num_items)
+            uid = torch.randint(0, self.num_users, (k,), device=u.device)
+            iid = torch.randint(0, self.num_items, (k,), device=u.device)
+            uu = F.normalize(user_embeddings[uid], dim=1)
+            ii = F.normalize(item_embeddings[iid], dim=1)
+            d_u = 2.0 - 2.0 * (uu @ uu.t())          # squared L2 on unit sphere = 2-2cos
+            d_i = 2.0 - 2.0 * (ii @ ii.t())
+            unif_u = torch.log(torch.exp(-self.directau_t * d_u).mean() + 1e-12)
+            unif_i = torch.log(torch.exp(-self.directau_t * d_i).mean() + 1e-12)
+            loss = loss + self.directau_unif * (unif_u + unif_i)
         return loss
 
     def _apply_global(self, x):
@@ -348,6 +389,11 @@ class NoiseSGL(AbstractRecommender):
         self.fcl_mom = float(config["fcl_mom"]) if "fcl_mom" in config else 0.0
         self.fcl_degree = int(config["fcl_degree"]) if "fcl_degree" in config else 4
         self.fcl_momentum = float(config["fcl_momentum"]) if "fcl_momentum" in config else 0.1
+        # Round-9: DirectAU alignment & uniformity (all default 0 = off).
+        self.directau_align = float(config["directau_align"]) if "directau_align" in config else 0.0
+        self.directau_unif = float(config["directau_unif"]) if "directau_unif" in config else 0.0
+        self.directau_t = float(config["directau_t"]) if "directau_t" in config else 2.0
+        self.directau_k = int(config["directau_k"]) if "directau_k" in config else 512
         self.view_mix = str(config["view_mix"]) if "view_mix" in config else "nn"
         assert len(self.view_mix) >= 1 and all(c in "neg" for c in self.view_mix), \
             "view_mix must be a non-empty string over {n,e,g}, got %r" % self.view_mix
@@ -439,10 +485,17 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.fcl_mom = self.fcl_mom
         self.lightgcn.fcl_degree = self.fcl_degree
         self.lightgcn.fcl_momentum = self.fcl_momentum
+        self.lightgcn.directau_align = self.directau_align
+        self.lightgcn.directau_unif = self.directau_unif
+        self.lightgcn.directau_t = self.directau_t
+        self.lightgcn.directau_k = self.directau_k
         if self.fcl_poly or self.fcl_bt or self.fcl_off or self.fcl_mom:
             self.logger.info("[fcl] poly=%.3f bt=%.3f off=%.3f mom=%.3f degree=%d momentum=%.2f" % (
                 self.fcl_poly, self.fcl_bt, self.fcl_off, self.fcl_mom,
                 self.fcl_degree, self.fcl_momentum))
+        if self.directau_align or self.directau_unif:
+            self.logger.info("[directau] align=%.3f unif=%.3f t=%.2f k=%d" % (
+                self.directau_align, self.directau_unif, self.directau_t, self.directau_k))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
@@ -655,7 +708,7 @@ class NoiseSGL(AbstractRecommender):
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
-                sup_logits, infonce_loss, fcl_loss = self.lightgcn(
+                sup_logits, infonce_loss, fcl_loss, dau_loss = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=self.noise_eps)
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
@@ -728,6 +781,8 @@ class NoiseSGL(AbstractRecommender):
                         + fcl_loss + self.reg * reg_loss
                 else:
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
+                if dau_loss is not None:
+                    loss = loss + dau_loss
                 total_loss += loss
                 total_bpr_loss += bpr_loss
                 total_reg_loss += self.reg * reg_loss
