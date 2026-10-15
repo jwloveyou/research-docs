@@ -82,6 +82,19 @@ class _LightGCN(nn.Module):
         self.directau_unif = 0.0
         self.directau_t = 2.0
         self.directau_k = 512
+        # Round-11: NCL-style (WWW'22, arXiv:2202.06200) prototype (cluster) interest
+        # injection. k-means clusters the *main-branch* node embeddings into K
+        # prototypes; each node's final embedding is convex-blended toward its nearest
+        # prototype centre by proto_lam. This injects a coarse global "interest group"
+        # signal into the representation WITHOUT touching the propagation operator
+        # (respects R4/R6) and WITHOUT any contrastive loss on prototypes (the most
+        # conservative variant, per R10, to avoid the R7 global-view pitfall). Default
+        # proto_K=0 -> off, backward compatible.
+        self.proto_K = 0
+        self.proto_lam = 0.0
+        self.proto_centers = None   # [K, d]
+        self.proto_assign_u = None  # [num_users] long
+        self.proto_assign_i = None  # [num_items] long
         d = self.embed_dim
         # projector (MLP d->d->d, no bias, BN+ReLU) as in RecDCL; only used by FCL.
         self.fcl_projector = nn.Sequential(
@@ -109,7 +122,7 @@ class _LightGCN(nn.Module):
             init(self.item_embeddings.weight)
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
-        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main)
+        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
 
         # Round-6/7: build a list of contrastive views. Each view uses the SAME LightGCN
         # operator family; only the injected stochasticity / operator differs:
@@ -260,7 +273,7 @@ class _LightGCN(nn.Module):
         return self.gl_U @ (self.gl_S.unsqueeze(1) * (self.gl_Vt @ x))
 
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
-                     use_gl=False):
+                     use_gl=False, apply_proto=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
         all_embeddings = [ego_embeddings]
 
@@ -297,6 +310,11 @@ class _LightGCN(nn.Module):
         if self.freq_flip:
             # "space flip" of the high-pass SimGCF variant
             user_embeddings = -user_embeddings
+        if apply_proto and self.proto_K > 0 and self.proto_lam > 0 and self.proto_centers is not None:
+            cu = self.proto_centers[self.proto_assign_u]
+            ci = self.proto_centers[self.proto_assign_i]
+            user_embeddings = (1.0 - self.proto_lam) * user_embeddings + self.proto_lam * cu
+            item_embeddings = (1.0 - self.proto_lam) * item_embeddings + self.proto_lam * ci
 
         return user_embeddings, item_embeddings
 
@@ -311,7 +329,7 @@ class _LightGCN(nn.Module):
     def eval(self):
         super(_LightGCN, self).eval()
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
-            self.norm_adj, use_freq=self.freq_on_main)
+            self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
 
 
 class NoiseSGL(AbstractRecommender):
@@ -394,6 +412,12 @@ class NoiseSGL(AbstractRecommender):
         self.directau_unif = float(config["directau_unif"]) if "directau_unif" in config else 0.0
         self.directau_t = float(config["directau_t"]) if "directau_t" in config else 2.0
         self.directau_k = int(config["directau_k"]) if "directau_k" in config else 512
+        # Round-11: NCL-style prototype (cluster) interest injection.
+        self.proto_K = int(config["proto_K"]) if "proto_K" in config else 0
+        self.proto_lam = float(config["proto_lam"]) if "proto_lam" in config else 0.0
+        self.proto_interval = int(config["proto_interval"]) if "proto_interval" in config else 1
+        self.proto_iters = int(config["proto_iters"]) if "proto_iters" in config else 10
+        self.proto_seed = int(config["proto_seed"]) if "proto_seed" in config else 0
         self.view_mix = str(config["view_mix"]) if "view_mix" in config else "nn"
         assert len(self.view_mix) >= 1 and all(c in "neg" for c in self.view_mix), \
             "view_mix must be a non-empty string over {n,e,g}, got %r" % self.view_mix
@@ -489,6 +513,11 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.directau_unif = self.directau_unif
         self.lightgcn.directau_t = self.directau_t
         self.lightgcn.directau_k = self.directau_k
+        self.lightgcn.proto_K = self.proto_K
+        self.lightgcn.proto_lam = self.proto_lam
+        if self.proto_K > 0:
+            self.logger.info("[proto] K=%d lam=%.3f interval=%d iters=%d seed=%d" % (
+                self.proto_K, self.proto_lam, self.proto_interval, self.proto_iters, self.proto_seed))
         if self.fcl_poly or self.fcl_bt or self.fcl_off or self.fcl_mom:
             self.logger.info("[fcl] poly=%.3f bt=%.3f off=%.3f mom=%.3f degree=%d momentum=%.2f" % (
                 self.fcl_poly, self.fcl_bt, self.fcl_off, self.fcl_mom,
@@ -686,10 +715,37 @@ class NoiseSGL(AbstractRecommender):
         return PairwiseSamplerV2(self.dataset.train_data, num_neg=1,
                                  batch_size=self.batch_size, shuffle=True)
 
+    def _cluster_prototypes(self):
+        """Round-11: k-means over the *main-branch* node embeddings (users+items) into K
+        prototypes. Runs on CPU via scipy kmeans2 (minit='points', deterministic seed);
+        the per-batch injection in _forward_gcn then only gathers the centres (O(n*d)).
+        Clustering is on the pre-injection embeddings (apply_proto=False) to avoid a
+        self-reinforcing feedback loop.
+        """
+        from scipy.cluster.vq import kmeans2
+        with torch.no_grad():
+            ue, ie = self.lightgcn._forward_gcn(self.lightgcn.norm_adj,
+                                                use_freq=self.lightgcn.freq_on_main)
+            Z = torch.cat([ue, ie], dim=0)
+            Z = Z.cpu().numpy().astype(np.float64)
+        n = Z.shape[0]
+        K = int(min(self.proto_K, n - 1))
+        t0 = time()
+        centers, labels = kmeans2(Z, K, iter=self.proto_iters, minit="points",
+                                  seed=self.proto_seed)
+        centers = torch.from_numpy(centers.astype(np.float32)).to(self.device)
+        assign = torch.from_numpy(labels.astype(np.int64)).to(self.device)
+        self.lightgcn.proto_centers = centers
+        self.lightgcn.proto_assign_u = assign[:self.num_users]
+        self.lightgcn.proto_assign_i = assign[self.num_users:]
+        self.logger.info("[proto] re-cluster K=%d time=%.1fs" % (K, time() - t0))
+
     def train_model(self):
         self.logger.info(self.evaluator.metrics_info())
         stopping_step = 0
         for epoch in range(1, self.epochs + 1):
+            if self.proto_K > 0 and ((epoch - 1) % self.proto_interval == 0):
+                self._cluster_prototypes()
             total_loss, total_bpr_loss, total_reg_loss = 0.0, 0.0, 0.0
             training_start_time = time()
             # NoiseSGL: noise views need no sub-graph; Round-6 ED views need a freshly
