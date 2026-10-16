@@ -1,0 +1,14 @@
+BEGIN 2026年 10月 16日 星期五 19:46:57 CST
+START reg01 2026年 10月 16日 星期五 19:46:57 CST
+END   reg01 rc=0 2026年 10月 16日 星期五 19:56:21 CST
+--- reg01 peak/final ---
+peakR@20=0.11729 @ep15 | peakN@20=0.10185 @ep15 | final(ep15) R=0.11729 N=0.10185
+START reg001 2026年 10月 16日 星期五 19:56:21 CST
+END   reg001 rc=0 2026年 10月 16日 星期五 20:05:57 CST
+--- reg001 peak/final ---
+peakR@20=0.12314 @ep15 | peakN@20=0.10643 @ep15 | final(ep15) R=0.12314 N=0.10643
+START reg0001 2026年 10月 16日 星期五 20:05:57 CST
+END   reg0001 rc=0 2026年 10月 16日 星期五 20:15:25 CST
+--- reg0001 peak/final ---
+peakR@20=0.12323 @ep15 | peakN@20=0.10612 @ep15 | final(ep15) R=0.12323 N=0.10612
+ALLDONE 2026年 10月 16日 星期五 20:15:25 CST

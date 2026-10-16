@@ -1,0 +1,92 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-16 19:45:05.595: my pid: 33460
+2026-10-16 19:45:05.596: model: model.general_recommender.NoiseSGL
+2026-10-16 19:45:05.596: Dataset statistics:
+Name: gowalla
+The number of users: 29858
+The number of items: 40981
+The number of ratings: 1027370
+Average actions of users: 34.41
+Average actions of items: 25.07
+The sparsity of the dataset: 99.916038%
+
+The number of training: 810128
+The number of validation: 0
+The number of testing: 217242
+2026-10-16 19:45:05.596: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=gowalla
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=64
+n_layers=3
+ssl_reg=0.07
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=0
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=1
+lightgcl_perlayer=0
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=15
+batch_size=1024
+num_negatives=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=gowalla
+seed=42
+epochs=15
+verbose=1
+stop_cnt=500
+lightgcl=1
+lightgcl_perlayer=0
+ssl_reg=0.07
+create_adj_mat function cost: 0.097493s
+2026-10-16 19:45:08.475: [lightgcl] rank=5 svd_time=0.3s energy_frac=0.0031 s_top=[1.0, 0.9879999756813049, 0.972000002861023, 0.9599999785423279, 0.9520000219345093] perlayer=0
+2026-10-16 19:45:08.740: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-16 19:45:09.608: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-16 19:45:42.247: [iter 1 : loss : 1.8665 = 0.6755 + 1.1910 + 0.0000, time: 32.637050]
+2026-10-16 19:45:45.536: epoch 1:	0.00902622  	0.03268513  	0.02797669  
+2026-10-16 19:45:45.537: Find a better model.
+2026-10-16 19:46:18.213: [iter 2 : loss : 1.7586 = 0.6049 + 1.1536 + 0.0001, time: 32.631998]

@@ -1,0 +1,18 @@
+BEGIN 2026年 10月 16日 星期五 19:23:28 CST
+START ctrl_nn 2026年 10月 16日 星期五 19:23:28 CST
+END   ctrl_nn rc=0 2026年 10月 16日 星期五 19:35:25 CST
+--- ctrl_nn best_result ---
+2026-10-16 19:35:24.163: best_result@epoch 12:
+
+2026-10-16 19:35:24.163: 		0.0545      	0.1767      	0.1487      
+--- ctrl_nn peak/final ---
+peakR@20=0.17669 @ep12 | peakN@20=0.14871 @ep13 | final(ep15) R=0.17649 N=0.14833
+START lg_ss_01 2026年 10月 16日 星期五 19:35:25 CST
+END   lg_ss_01 rc=0 2026年 10月 16日 星期五 19:45:02 CST
+--- lg_ss_01 best_result ---
+2026-10-16 19:45:01.781: best_result@epoch 15:
+
+2026-10-16 19:45:01.781: 		0.0206      	0.0657      	0.0556      
+--- lg_ss_01 peak/final ---
+peakR@20=0.06570 @ep15 | peakN@20=0.05561 @ep15 | final(ep15) R=0.06570 N=0.05561
+START lg_ss_007 2026年 10月 16日 星期五 19:45:02 CST

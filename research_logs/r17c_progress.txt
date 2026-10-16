@@ -1,0 +1,10 @@
+BEGIN 2026年 10月 16日 星期五 20:16:08 CST
+START yelp_ss001 2026年 10月 16日 星期五 20:16:08 CST
+END   yelp_ss001 rc=0 2026年 10月 16日 星期五 20:31:51 CST
+--- yelp_ss001 peak/final ---
+peakR@20=0.04307 @ep15 | peakN@20=0.03495 @ep15 | final(ep15) R=0.04307 N=0.03495
+START amazon_ss001 2026年 10月 16日 星期五 20:31:51 CST
+END   amazon_ss001 rc=0 2026年 10月 16日 星期五 21:30:44 CST
+--- amazon_ss001 peak/final ---
+peakR@20=0.02641 @ep15 | peakN@20=0.02101 @ep15 | final(ep15) R=0.02641 N=0.02101
+ALLDONE 2026年 10月 16日 星期五 21:30:45 CST
