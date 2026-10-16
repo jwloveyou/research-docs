@@ -9,3 +9,4 @@ data/model_tmp/
 data/pretrain-embeddings/
 dataset/*/*.train
 dataset/*/*.test
+dataset/_raw/
