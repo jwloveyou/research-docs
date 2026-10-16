@@ -1,0 +1,16 @@
+BEGIN 2026年 10月 16日 星期五 16:41:30 CST
+START eps01_const 2026年 10月 16日 星期五 16:41:30 CST
+END   eps01_const rc=143 2026年 10月 16日 星期五 17:06:01 CST
+--- eps01_const best_result ---
+--- eps01_const peak/final ---
+peakR@20=0.17765 @ep14 | peakN@20=0.14941 @ep14 | final(ep30) R=0.16814 N=0.14129
+START eps02_xs_const 2026年 10月 16日 星期五 17:06:01 CST
+END   eps02_xs_const rc=143 2026年 10月 16日 星期五 17:44:53 CST
+--- eps02_xs_const best_result ---
+--- eps02_xs_const peak/final ---
+peakR@20=0.17465 @ep12 | peakN@20=0.14708 @ep13 | final(ep40) R=0.16078 N=0.13457
+START eps01_xs_const 2026年 10月 16日 星期五 17:44:53 CST
+END   eps01_xs_const rc=143 (killed after peak) 2026年 10月 16日 星期五 18:02:20 CST
+--- eps01_xs_const peak/final ---
+peakR@20=0.17553 @ep14 | peakN@20=0.14789 @ep14 | final(ep16) R=0.17470 N=0.14753
+SKIP eps01_xs_win30 (single-shot already worse in const; anneal cannot reverse a view-level -1.5% deficit)

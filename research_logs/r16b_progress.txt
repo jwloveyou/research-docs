@@ -1,0 +1,13 @@
+BEGIN 2026年 10月 16日 星期五 18:03:09 CST
+START reg005 2026年 10月 16日 星期五 18:03:09 CST
+END   reg005 rc=143 2026年 10月 16日 星期五 18:31:11 CST
+--- reg005 peak/final ---
+peakR@20=0.17781 @ep29 | peakN@20=0.15181 @ep34 | final(ep34) R=0.17743 N=0.15181
+START reg002 2026年 10月 16日 星期五 18:31:11 CST
+END   reg002 rc=143 2026年 10月 16日 星期五 18:44:31 CST
+--- reg002 peak/final ---
+peakR@20=0.16720 @ep16 | peakN@20=0.14235 @ep16 | final(ep16) R=0.16720 N=0.14235
+ALLDONE 2026年 10月 16日 星期五 18:44:31 CST
+END   reg002 rc=143 (killed; trend already clear) 2026年 10月 16日 星期五 18:44:10 CST
+--- reg002 peak/final (to ep17) ---
+peakR@20=0.16720 @ep16 | peakN@20=0.14235 @ep16 (slow-converging toward pure-LightGCN trajectory; far behind reg0.1 within budget)

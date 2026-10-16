@@ -1,0 +1,2 @@
+research_logs/run_r16.sh: line 12: 98252 Terminated              $PY main.py --recommender=NoiseSGL --dataset=gowalla --seed=42 --epochs=100 --verbose=1 --stop_cnt=200 "$@" > $log 2>&1
+research_logs/run_r16.sh: line 12: 82433 Terminated              $PY main.py --recommender=NoiseSGL --dataset=gowalla --seed=42 --epochs=100 --verbose=1 --stop_cnt=200 "$@" > $log 2>&1
