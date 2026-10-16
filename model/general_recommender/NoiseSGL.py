@@ -66,6 +66,15 @@ class _LightGCN(nn.Module):
         self.gl_U = None    # [n, q]
         self.gl_S = None    # [q]
         self.gl_Vt = None   # [q, n]
+        # Round-17: original LightGCL (arXiv:2302.08191) local-vs-global contrast.
+        # The global view is the *bipartite* (I x J) truncated SVD operator applied to the
+        # local (main-branch) embeddings: g^(u) = U_q S_q V_q^T . e^(v), g^(v) = V_q S_q
+        # U_q^T . e^(u). This is a deterministic denoising signal (no stochastic noise),
+        # directly contrasted against the clean local view in InfoNCE. Default off.
+        self.lightgcl = False
+        self.lightgcl_perlayer = 1   # 1 = per-layer InfoNCE (paper eq.6); 0 = final emb only
+        self.gl_UqS = None    # [I, q] = U_q * S_q  (user side, bipartite SVD)
+        self.gl_VqS = None    # [J, q] = V_q * S_q  (item side, bipartite SVD)
         # Round-8: RecDCL-style feature-wise contrastive learning (FCL). Representation
         # layer only -> does NOT touch the propagation operator (respects R4/R6). All
         # coefficients default to 0 (module off, backward compatible).
@@ -129,27 +138,6 @@ class _LightGCN(nn.Module):
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
 
-        # Round-6/7: build a list of contrastive views. Each view uses the SAME LightGCN
-        # operator family; only the injected stochasticity / operator differs:
-        #   n = embedding-space noise (SimGCL/XSimGCL), e = edge-dropout structure (SGL),
-        #   g = truncated-SVD global collaborative view (LightGCL, Round-7).
-        # String order is respected; "nn"/"ne"/"nee" reproduce the Round-6 numerics.
-        views = []  # each entry: (normalised user-emb, normalised item-emb)
-        n_ed = 0
-        for ch in self.view_mix:
-            if ch == "n":
-                ue, ie = self._forward_gcn(self.norm_adj, perturb=True, eps=eps,
-                                           use_freq=self.freq_on_views)
-            elif ch == "e":
-                adj = sub_graph1 if n_ed == 0 else sub_graph2
-                n_ed += 1
-                ue, ie = self._forward_gcn(adj, perturb=False, use_freq=self.freq_on_views)
-            elif ch == "g":
-                ue, ie = self._forward_gcn(None, use_gl=True, use_freq=self.freq_on_views)
-            else:
-                raise ValueError("unknown view char %r" % ch)
-            views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
-
         user_embs = F.embedding(users, user_embeddings)
         item_embs = F.embedding(items, item_embeddings)
         neg_item_embs = F.embedding(neg_items, item_embeddings)
@@ -158,26 +146,53 @@ class _LightGCN(nn.Module):
         sup_neg_ratings = inner_product(user_embs, neg_item_embs)   # [batch_size]
         sup_logits = sup_pos_ratings - sup_neg_ratings              # [batch_size]
 
-        # Pairwise InfoNCE over all view pairs, averaged (for view_mix="nn" this is
-        # numerically identical to the original NoiseSGL two-view InfoNCE).
-        infonce = None
-        npairs = 0
-        for a in range(len(views)):
-            ue_a, ie_a = views[a]
-            for b in range(a + 1, len(views)):
-                ue_b, ie_b = views[b]
-                bu = F.embedding(users, ue_a)
-                bi = F.embedding(items, ie_a)
-                pos_u = inner_product(bu, F.embedding(users, ue_b))
-                pos_i = inner_product(bi, F.embedding(items, ie_b))
-                tot_u = torch.matmul(bu, torch.transpose(ue_b, 0, 1))
-                tot_i = torch.matmul(bi, torch.transpose(ie_b, 0, 1))
-                cu = torch.logsumexp((tot_u - pos_u[:, None]) / self.ssl_temp, dim=1)
-                ci = torch.logsumexp((tot_i - pos_i[:, None]) / self.ssl_temp, dim=1)
-                pair_loss = torch.sum(cu + ci)
-                infonce = pair_loss if infonce is None else infonce + pair_loss
-                npairs += 1
-        infonce = infonce / max(npairs, 1)
+        if self.lightgcl:
+            # Round-17: original LightGCL local-vs-global contrastive loss replaces the
+            # noise-view InfoNCE. No stochastic views are built (the clean local view is
+            # the main branch itself, the global view is the deterministic SVD operator).
+            infonce = self._lightgcl_infonce(users, items)
+        else:
+            # Round-6/7: build a list of contrastive views. Each view uses the SAME LightGCN
+            # operator family; only the injected stochasticity / operator differs:
+            #   n = embedding-space noise (SimGCL/XSimGCL), e = edge-dropout structure (SGL),
+            #   g = truncated-SVD global collaborative view (LightGCL, Round-7).
+            # String order is respected; "nn"/"ne"/"nee" reproduce the Round-6 numerics.
+            views = []  # each entry: (normalised user-emb, normalised item-emb)
+            n_ed = 0
+            for ch in self.view_mix:
+                if ch == "n":
+                    ue, ie = self._forward_gcn(self.norm_adj, perturb=True, eps=eps,
+                                               use_freq=self.freq_on_views)
+                elif ch == "e":
+                    adj = sub_graph1 if n_ed == 0 else sub_graph2
+                    n_ed += 1
+                    ue, ie = self._forward_gcn(adj, perturb=False, use_freq=self.freq_on_views)
+                elif ch == "g":
+                    ue, ie = self._forward_gcn(None, use_gl=True, use_freq=self.freq_on_views)
+                else:
+                    raise ValueError("unknown view char %r" % ch)
+                views.append((F.normalize(ue, dim=1), F.normalize(ie, dim=1)))
+
+            # Pairwise InfoNCE over all view pairs, averaged (for view_mix="nn" this is
+            # numerically identical to the original NoiseSGL two-view InfoNCE).
+            infonce = None
+            npairs = 0
+            for a in range(len(views)):
+                ue_a, ie_a = views[a]
+                for b in range(a + 1, len(views)):
+                    ue_b, ie_b = views[b]
+                    bu = F.embedding(users, ue_a)
+                    bi = F.embedding(items, ie_a)
+                    pos_u = inner_product(bu, F.embedding(users, ue_b))
+                    pos_i = inner_product(bi, F.embedding(items, ie_b))
+                    tot_u = torch.matmul(bu, torch.transpose(ue_b, 0, 1))
+                    tot_i = torch.matmul(bi, torch.transpose(ie_b, 0, 1))
+                    cu = torch.logsumexp((tot_u - pos_u[:, None]) / self.ssl_temp, dim=1)
+                    ci = torch.logsumexp((tot_i - pos_i[:, None]) / self.ssl_temp, dim=1)
+                    pair_loss = torch.sum(cu + ci)
+                    infonce = pair_loss if infonce is None else infonce + pair_loss
+                    npairs += 1
+            infonce = infonce / max(npairs, 1)
 
         fcl_loss = None
         if (self.fcl_poly > 0) or (self.fcl_bt > 0) or (self.fcl_off > 0) or (self.fcl_mom > 0):
@@ -276,6 +291,57 @@ class _LightGCN(nn.Module):
         adjacency: (U_q diag(S_q) V_q^T) x, evaluated in low-rank form (O(n*q*d)) so the
         dense n x n reconstruction is never materialised."""
         return self.gl_U @ (self.gl_S.unsqueeze(1) * (self.gl_Vt @ x))
+
+    def _lightgcl_infonce(self, users, items):
+        """Original LightGCL (ICLR'23, arXiv:2302.08191) local-global contrastive loss.
+
+        Local view = the clean LightGCN main-branch embeddings; global view = the SAME
+        local embeddings propagated through the rank-q SVD-reconstructed *bipartite*
+        adjacency A^ = U_q S_q V_q^T:
+            g_l^(u) = U_q S_q V_q^T . E_{l-1}^(v),   g_l^(v) = V_q S_q U_q^T . E_{l-1}^(u)
+        InfoNCE contrasts z_l (local) vs g_l (global), user- and item-side. With
+        lightgcl_perlayer=1 the loss is summed over layers l=0..L (paper eq.6); with 0
+        only the final mean-pooled local embedding is contrasted against its global view
+        (cheaper single-step variant). This is NOT the Round-7 noise-vs-global mixed view.
+        """
+        layers = self._forward_gcn(self.norm_adj, return_all=True,
+                                   use_freq=self.freq_on_main)
+        UqS = self.gl_UqS
+        VqS = self.gl_VqS
+        if self.lightgcl_perlayer:
+            n_steps = self.n_layers + 1
+        else:
+            # single-step: only the final (mean-pooled) local embeddings
+            u_f = torch.stack([u for u, _ in layers], dim=1).mean(dim=1)
+            i_f = torch.stack([i for _, i in layers], dim=1).mean(dim=1)
+            layers = [(u_f, i_f)]
+            n_steps = 1
+        loss = 0.0
+        for step in range(n_steps):
+            u_z, i_z = layers[step]
+            if self.lightgcl_perlayer:
+                if step == 0:
+                    u_prev, i_prev = layers[0]
+                else:
+                    u_prev, i_prev = layers[step - 1]
+            else:
+                u_prev, i_prev = u_z, i_z
+            g_u = UqS @ (VqS.t() @ i_prev)    # [I, q] @ [q, J] @ [J, d]
+            g_i = VqS @ (UqS.t() @ u_prev)    # [J, q] @ [q, I] @ [I, d]
+            u_z = F.normalize(u_z, dim=1)
+            i_z = F.normalize(i_z, dim=1)
+            g_u = F.normalize(g_u, dim=1)
+            g_i = F.normalize(g_i, dim=1)
+            bu = F.embedding(users, u_z)
+            bi = F.embedding(items, i_z)
+            pos_u = inner_product(bu, F.embedding(users, g_u))
+            pos_i = inner_product(bi, F.embedding(items, g_i))
+            tot_u = torch.matmul(bu, g_u.t())
+            tot_i = torch.matmul(bi, g_i.t())
+            cu = torch.logsumexp((tot_u - pos_u[:, None]) / self.ssl_temp, dim=1)
+            ci = torch.logsumexp((tot_i - pos_i[:, None]) / self.ssl_temp, dim=1)
+            loss = loss + torch.sum(cu) + torch.sum(ci)
+        return loss
 
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False):
@@ -444,6 +510,12 @@ class NoiseSGL(AbstractRecommender):
         self.use_gl = "g" in self.view_mix
         # Rank of the truncated SVD used for the global view (LightGCL uses q=5).
         self.gl_rank = int(config["gl_rank"]) if "gl_rank" in config else 5
+        # Round-17: original LightGCL local-vs-global contrast (arXiv:2302.08191).
+        # lightgcl=1 replaces the noise-view InfoNCE with a clean-local-vs-SVD-global
+        # contrast. lightgcl_perlayer=1 sums InfoNCE over layers 0..L (paper eq.6),
+        # 0 uses only the final mean-pooled embedding (cheaper single-step variant).
+        self.lightgcl = int(config["lightgcl"]) if "lightgcl" in config else 0
+        self.lightgcl_perlayer = int(config["lightgcl_perlayer"]) if "lightgcl_perlayer" in config else 1
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -510,6 +582,8 @@ class NoiseSGL(AbstractRecommender):
         adj_matrix = self.create_adj_mat()
         if self.use_gl:
             self._init_global_view(adj_matrix)
+        if self.lightgcl:
+            self._init_lightgcl_global()
         adj_matrix = sp_mat_to_sp_tensor(adj_matrix).to(self.device)
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
@@ -518,11 +592,16 @@ class NoiseSGL(AbstractRecommender):
             self.lightgcn.gl_U = torch.from_numpy(self.gl_U).float().to(self.device)
             self.lightgcn.gl_S = torch.from_numpy(self.gl_S).float().to(self.device)
             self.lightgcn.gl_Vt = torch.from_numpy(self.gl_Vt).float().to(self.device)
+        if self.lightgcl:
+            self.lightgcn.gl_UqS = torch.from_numpy(self.gl_UqS).float().to(self.device)
+            self.lightgcn.gl_VqS = torch.from_numpy(self.gl_VqS).float().to(self.device)
         self.lightgcn.freq_on_main = bool(self.freq_on_main)
         self.lightgcn.freq_on_views = bool(self.freq_on_views)
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
+        self.lightgcn.lightgcl = bool(self.lightgcl)
+        self.lightgcn.lightgcl_perlayer = int(self.lightgcl_perlayer)
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -586,6 +665,30 @@ class NoiseSGL(AbstractRecommender):
         energy = float(np.sum(self.gl_S ** 2)) / max(fro2, 1e-12)
         self.logger.info("[gl-view] rank=%d svd_time=%.1fs energy_frac=%.4f s_top=%s" % (
             q, time() - t0, energy, np.round(self.gl_S[:5], 3).tolist()))
+
+    def _init_lightgcl_global(self):
+        """Round-17: truncated SVD of the *bipartite* normalised interaction matrix
+        R_norm = D_u^{-1/2} R D_i^{-1/2} (I x J), giving the original LightGCL global-view
+        operator A^ = U_q S_q V_q^T. Stored as U_q S_q ([I, q]) and V_q S_q ([J, q]); the
+        dense I x J reconstruction is never materialised."""
+        from scipy.sparse.linalg import svds
+        t0 = time()
+        R = self.dataset.train_csr_mat.astype(np.float32).tocsr()
+        u_deg = np.asarray(R.sum(1)).ravel() + 1e-12
+        i_deg = np.asarray(R.sum(0)).ravel() + 1e-12
+        R_norm = (sp.diags(1.0 / np.sqrt(u_deg)) @ R @ sp.diags(1.0 / np.sqrt(i_deg))).tocsr()
+        q = int(min(self.gl_rank, min(R_norm.shape) - 1))
+        u, s, vt = svds(R_norm, k=q)
+        order = np.argsort(s)[::-1]
+        u = u[:, order]
+        s = s[order]
+        vt = vt[order, :]
+        self.gl_UqS = np.ascontiguousarray(u * s[None, :], dtype=np.float32)   # [I, q]
+        self.gl_VqS = np.ascontiguousarray(vt.T * s[None, :], dtype=np.float32)  # [J, q]
+        fro2 = float(R_norm.multiply(R_norm).sum())
+        energy = float(np.sum(s ** 2)) / max(fro2, 1e-12)
+        self.logger.info("[lightgcl] rank=%d svd_time=%.1fs energy_frac=%.4f s_top=%s perlayer=%d" % (
+            q, time() - t0, energy, np.round(s[:5], 3).tolist(), self.lightgcl_perlayer))
 
     @timer
     def create_adj_mat(self, is_subgraph=False, aug_type='ed'):
