@@ -1,0 +1,30 @@
+BEGIN Sat Oct 17 05:56:14 CST 2026
+START gpu4 yelp2018_neg3 Sat Oct 17 05:56:14 CST 2026
+START gpu5 yelp2018_neg5 Sat Oct 17 05:56:14 CST 2026
+START gpu6 amazon-book_neg3 Sat Oct 17 05:56:14 CST 2026
+START gpu7 amazon-book_neg5 Sat Oct 17 05:56:14 CST 2026
+END gpu5 yelp2018_neg5 rc=0 Sat Oct 17 06:12:05 CST 2026
+--- yelp2018_neg5 best ---
+2026-10-17 06:12:05.009: best_result@epoch 8:
+
+2026-10-17 06:12:05.009: 		0.0313      	0.0701      	0.0573      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+END gpu4 yelp2018_neg3 rc=0 Sat Oct 17 06:12:07 CST 2026
+--- yelp2018_neg3 best ---
+2026-10-17 06:12:06.511: best_result@epoch 8:
+
+2026-10-17 06:12:06.511: 		0.0313      	0.0701      	0.0573      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+END gpu7 amazon-book_neg5 rc=0 Sat Oct 17 07:08:49 CST 2026
+--- amazon-book_neg5 best ---
+2026-10-17 07:08:48.625: best_result@epoch 12:
+
+2026-10-17 07:08:48.625: 		0.0203      	0.0504      	0.0391      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+END gpu6 amazon-book_neg3 rc=0 Sat Oct 17 07:09:20 CST 2026
+--- amazon-book_neg3 best ---
+2026-10-17 07:09:19.913: best_result@epoch 12:
+
+2026-10-17 07:09:19.913: 		0.0202      	0.0504      	0.0391      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+ALLDONE Sat Oct 17 07:09:20 CST 2026

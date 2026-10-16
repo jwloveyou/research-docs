@@ -1,0 +1,14 @@
+BEGIN Sat Oct 17 06:23:47 CST 2026
+START gpu5 gowalla_neg5 Sat Oct 17 06:23:47 CST 2026
+START gpu4 gowalla_neg3 Sat Oct 17 06:23:47 CST 2026
+END gpu5 gowalla_neg5 rc=0 Sat Oct 17 06:32:53 CST 2026
+2026-10-17 06:32:52.662: best_result@epoch 15:
+
+2026-10-17 06:32:52.662: 		0.0561      	0.1813      	0.1515      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+END gpu4 gowalla_neg3 rc=0 Sat Oct 17 06:33:00 CST 2026
+2026-10-17 06:33:00.062: best_result@epoch 15:
+
+2026-10-17 06:33:00.062: 		0.0561      	0.1812      	0.1515      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+ALLDONE Sat Oct 17 06:33:00 CST 2026
