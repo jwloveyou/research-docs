@@ -65,10 +65,6 @@ def build(config_args):
     # inject command-line overrides before the model config is read
     config._cmd_args = {k: str(v) for k, v in config_args.items()}
     config.add_config(root_dir + "conf/NoiseSGL.ini", section="hyperparameters", used_as_summary=True)
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(config["gpu_id"])
-    torch.manual_seed(config["seed"])
-    torch.cuda.manual_seed_all(config["seed"])
-    np.random.seed(config["seed"])
     return NoiseSGL(config)
 
 
@@ -84,6 +80,11 @@ def main():
     ap.add_argument("--gpu_id", type=int, default=0)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
 
     rec = build({
         "recommender": "NoiseSGL",
