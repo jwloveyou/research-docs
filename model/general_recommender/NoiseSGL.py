@@ -60,6 +60,13 @@ class _LightGCN(nn.Module):
         # layer, default/backward-compatible); 1 = XSimGCL (perturb the layer-0 embedding
         # once, then propagate cleanly). Both keep the SAME LightGCN operator (R4/R6).
         self.noise_mode = 0
+        # Round-19: adaptive per-node per-layer gating (AdaGate-style, GRU update-gate
+        # analogue). gate = sigmoid(W_k . h_k + b_k) computed from the pre-propagation
+        # embedding; h_{k+1} = gate*(A h_k) + (1-gate)*h_k. Adds per-node adaptive
+        # propagation (expressivity / anti-oversmoothing) WITHOUT any new view or global
+        # signal (respects R4/R6/R7/R11). Default 0 = off (backward compatible).
+        self.gate_mode = 0
+        self.gate_proj = None
         # Round-7: LightGCL-style *global* collaborative view, built from a truncated
         # SVD of the normalised adjacency (A ~= U_q diag(S_q) V_q^T). Stored in low-rank
         # factors because densifying an n x n matrix would need tens of GBs.
@@ -354,12 +361,19 @@ class _LightGCN(nn.Module):
         all_embeddings = [ego_embeddings]
 
         for k in range(self.n_layers):
+            prev = ego_embeddings
             if use_gl:
                 ego_embeddings = self._apply_global(ego_embeddings)
             elif isinstance(norm_adj, list):
                 ego_embeddings = torch_sp.mm(norm_adj[k], ego_embeddings)
             else:
                 ego_embeddings = torch_sp.mm(norm_adj, ego_embeddings)
+            if self.gate_mode == 1 and self.gate_proj is not None:
+                # adaptive blend of propagated signal and identity (anti-oversmoothing);
+                # gate computed from the pre-propagation embedding, shared across main /
+                # noise-view / eval calls so the operator stays identical (R4/R6).
+                gate = torch.sigmoid(self.gate_proj[k](prev))
+                ego_embeddings = gate * ego_embeddings + (1.0 - gate) * prev
             if perturb and eps > 0 and self.noise_mode == 0:
                 # SimGCL-style embedding-space perturbation: uniform noise on the unit
                 # sphere, signed by the embedding, scaled by eps. Applied per propagation
@@ -452,6 +466,13 @@ class NoiseSGL(AbstractRecommender):
         # Round-16: 0 = SimGCL per-layer noise (default); 1 = XSimGCL single-shot input noise.
         self.noise_mode = int(config["noise_mode"]) if "noise_mode" in config else 0
         assert self.noise_mode in (0, 1)
+        # Round-19: adaptive per-node per-layer gating (AdaGate-style). gate_mode=1 turns
+        # on the gated residual in _forward_gcn; gate_init sets the initial sigmoid bias
+        # (positive => gate starts near 1, i.e. close to plain LightGCN, avoiding the
+        # R4 slow-convergence pitfall of a main-branch structural change).
+        self.gate_mode = int(config["gate_mode"]) if "gate_mode" in config else 0
+        assert self.gate_mode in (0, 1)
+        self.gate_init = float(config["gate_init"]) if "gate_init" in config else 2.0
         self.use_mlc = config["use_mlc"] if "use_mlc" in config else 1
         # Round-2: hardness-calibrated (semi-hard) negative sampling.
         self.neg_mode = config["neg_mode"] if "neg_mode" in config else "uniform"
@@ -600,6 +621,16 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
+        self.lightgcn.gate_mode = self.gate_mode
+        if self.gate_mode == 1:
+            self.lightgcn.gate_proj = nn.ModuleList(
+                [nn.Linear(self.emb_size, 1, bias=True) for _ in range(self.n_layers)]
+            ).to(self.device)
+            for proj in self.lightgcn.gate_proj:
+                nn.init.xavier_uniform_(proj.weight)
+                nn.init.constant_(proj.bias, self.gate_init)
+            self.logger.info("[gate] gate_mode=1 gate_init=%.2f n_layers=%d" % (
+                self.gate_init, self.n_layers))
         self.lightgcn.lightgcl = bool(self.lightgcl)
         self.lightgcn.lightgcl_perlayer = int(self.lightgcl_perlayer)
         self.lightgcn.fcl_poly = self.fcl_poly
