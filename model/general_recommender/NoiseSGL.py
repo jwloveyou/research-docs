@@ -466,6 +466,15 @@ class NoiseSGL(AbstractRecommender):
         # Round-16: 0 = SimGCL per-layer noise (default); 1 = XSimGCL single-shot input noise.
         self.noise_mode = int(config["noise_mode"]) if "noise_mode" in config else 0
         assert self.noise_mode in (0, 1)
+        # Round-20: noise curriculum (epsilon schedule). noise_anneal=0 keeps the fixed
+        # noise_eps (backward compatible); 1 = linear, 2 = cosine decay of the per-layer
+        # embedding-noise magnitude from noise_eps down to noise_eps_floor over the first
+        # noise_anneal_epochs epochs (0 => full training budget). Purely a static schedule
+        # (no learnable parameters), consistent with the R1/R15/R18 "static wins" law.
+        self.noise_anneal = int(config["noise_anneal"]) if "noise_anneal" in config else 0
+        assert self.noise_anneal in (0, 1, 2)
+        self.noise_anneal_epochs = int(config["noise_anneal_epochs"]) if "noise_anneal_epochs" in config else 0
+        self.noise_eps_floor = float(config["noise_eps_floor"]) if "noise_eps_floor" in config else 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style). gate_mode=1 turns
         # on the gated residual in _forward_gcn; gate_init sets the initial sigmoid bias
         # (positive => gate starts near 1, i.e. close to plain LightGCN, avoiding the
@@ -656,6 +665,9 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[directau] align=%.3f unif=%.3f t=%.2f k=%d" % (
                 self.directau_align, self.directau_unif, self.directau_t, self.directau_k))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
+        if self.noise_anneal:
+            self.logger.info("[noise-curriculum] anneal=%d epochs=%d eps=%.3f->%.3f" % (
+                self.noise_anneal, self.noise_anneal_epochs, self.noise_eps, self.noise_eps_floor))
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
             if self.freq_norm:
@@ -894,6 +906,31 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.proto_assign_i = assign[self.num_users:]
         self.logger.info("[proto] re-cluster K=%d time=%.1fs" % (K, time() - t0))
 
+    def _noise_eps(self, epoch):
+        """Effective per-layer noise magnitude at a given epoch (Round-20: noise curriculum).
+
+        noise_anneal=0 keeps the fixed noise_eps (backward compatible). Otherwise the
+        noise is decayed from noise_eps to noise_eps_floor over noise_anneal_epochs
+        epochs (linear or cosine), mirroring the SSL-weight annealing (R13/R15) but on
+        the augmentation strength itself. Rationale: a stronger augmentation early
+        builds a robust basin fast (R1/R12), while a weaker/zero augmentation later
+        lets the same shared LightGCN operator produce cleaner views for the InfoNCE
+        ramp-down, i.e. an augmentation curriculum (task B cross-domain idea).
+        """
+        if not self.noise_anneal or self.epochs <= 0:
+            return self.noise_eps
+        total = float(self.noise_anneal_epochs) if self.noise_anneal_epochs > 0 else float(self.epochs)
+        t = min(max(float(epoch) / max(total, 1.0), 0.0), 1.0)
+        start = self.noise_eps
+        floor = self.noise_eps_floor
+        if self.noise_anneal == 1:          # linear decay to floor
+            sched = start + (floor - start) * t
+        elif self.noise_anneal == 2:        # cosine decay to floor
+            sched = floor + (start - floor) * 0.5 * (1.0 + math.cos(math.pi * t))
+        else:
+            sched = start
+        return sched
+
     def _ssl_weight(self, epoch):
         """Multiplier on the InfoNCE loss at a given epoch (R13: SSL annealing).
 
@@ -943,12 +980,13 @@ class NoiseSGL(AbstractRecommender):
                         self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
             data_iter = self._pairwise_iter()
             self.lightgcn.train()
+            cur_eps = self._noise_eps(epoch)
             for bat_users, bat_pos_items, bat_neg_items in data_iter:
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
                 sup_logits, infonce_loss, fcl_loss, dau_loss = self.lightgcn(
-                    sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=self.noise_eps)
+                    sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=cur_eps)
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
                 if self.nt_ssm_w is not None:
@@ -973,9 +1011,9 @@ class NoiseSGL(AbstractRecommender):
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
                 if self.use_mlc:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
-                                                            perturb=True, eps=self.noise_eps)
+                                                            perturb=True, eps=cur_eps)
                     layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
-                                                            perturb=True, eps=self.noise_eps)
+                                                            perturb=True, eps=cur_eps)
 
                     mlc_loss = 0.0
                     n_layers = self.lightgcn.n_layers + 1
