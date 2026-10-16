@@ -150,8 +150,13 @@ class _LightGCN(nn.Module):
         neg_item_embs = F.embedding(neg_items, item_embeddings)
 
         sup_pos_ratings = inner_product(user_embs, item_embs)       # [batch_size]
-        sup_neg_ratings = inner_product(user_embs, neg_item_embs)   # [batch_size]
-        sup_logits = sup_pos_ratings - sup_neg_ratings              # [batch_size]
+        if neg_item_embs.dim() == 3:
+            # Round-21: K>1 negatives per positive -> [batch_size, K] margin scores
+            sup_neg_ratings = (user_embs.unsqueeze(1) * neg_item_embs).sum(-1)  # [batch_size, K]
+            sup_logits = sup_pos_ratings.unsqueeze(1) - sup_neg_ratings          # [batch_size, K]
+        else:
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)   # [batch_size]
+            sup_logits = sup_pos_ratings - sup_neg_ratings              # [batch_size]
 
         if self.lightgcl:
             # Round-17: original LightGCL local-vs-global contrastive loss replaces the
@@ -487,6 +492,12 @@ class NoiseSGL(AbstractRecommender):
         self.neg_mode = config["neg_mode"] if "neg_mode" in config else "uniform"
         assert self.neg_mode in ["uniform", "semihard"]
         self.neg_K = int(config["neg_K"]) if "neg_K" in config else 5
+        # Round-21: multi-negative BPR (sampled-softmax-style ranking margin). K>1 draws
+        # K independent negatives per positive (lower-variance ranking gradient). Static
+        # sampling change only -> no learnable parameters (consistent with the R1/R15/R18
+        # "static wins" law). Default 1 = backward compatible.
+        self.num_negatives = int(config["num_negatives"]) if "num_negatives" in config else 1
+        assert self.num_negatives >= 1
         # Round-3: SimGCF frequency signal scaler (arXiv:2512.15744)
         self.freq_scaler = int(config["freq_scaler"]) if "freq_scaler" in config else 0
         self.freq_type = config["freq_type"] if "freq_type" in config else "low"
@@ -878,8 +889,55 @@ class NoiseSGL(AbstractRecommender):
     def _pairwise_iter(self):
         if self.neg_mode == "semihard":
             return self._semihard_sampler()
+        if self.num_negatives > 1:
+            return self._multi_neg_sampler()
         return PairwiseSamplerV2(self.dataset.train_data, num_neg=1,
                                  batch_size=self.batch_size, shuffle=True)
+
+    def _multi_neg_sampler(self):
+        """Round-21: pairwise sampler with K>1 negative items per positive (sampled
+        softmax-style ranking margin). Mirrors PairwiseSamplerV2's uniform (user, positive)
+        sampling exactly (same number of samples and the same user distribution); the only
+        change is that each positive is paired with K independently-drawn negatives, so the
+        BPR gradient is averaged over K candidates (lower variance). Yields neg_items of
+        shape [batch, K]; num_negatives=1 keeps the original V2 sampler untouched.
+        """
+        from collections import defaultdict
+        K = int(self.num_negatives)
+        user_pos_dict = self.dataset.train_data.to_user_dict()
+        num_item = int(self.num_items)
+        user_arr = np.array(list(user_pos_dict.keys()), dtype=np.int64)
+        num_samples = sum(len(v) for v in user_pos_dict.values())
+        # One pass per epoch (the training loop re-creates this generator every epoch,
+        # mirroring PairwiseSamplerV2). No while-True: the generator must terminate so
+        # each epoch yields exactly num_samples (user,pos) pairs.
+        users = user_arr[randint_choice(len(user_arr), size=num_samples, replace=True)]
+        users = np.asarray(users, dtype=np.int64)
+        counts = defaultdict(int)
+        for u in users:
+            counts[u] += 1
+        pos_by_user = {}
+        neg_by_user = {}
+        for u, c in counts.items():
+            ui = int(u)
+            pos_items = user_pos_dict[ui]
+            pi = randint_choice(len(pos_items), size=c, replace=True)
+            pi = pi if isinstance(pi, (list, np.ndarray)) else [pi]
+            pos_by_user[u] = np.asarray(pos_items[np.asarray(pi, dtype=np.int64)], dtype=np.int64)
+            neg = randint_choice(num_item, size=c * K, replace=True, exclusion=user_pos_dict[ui])
+            neg_by_user[u] = np.asarray(neg, dtype=np.int64).reshape(c, K)
+        cursor = defaultdict(int)
+        pos_arr = np.empty(num_samples, dtype=np.int64)
+        neg_arr = np.empty((num_samples, K), dtype=np.int64)
+        for i, u in enumerate(users):
+            ci = cursor[u]
+            pos_arr[i] = pos_by_user[u][ci]
+            neg_arr[i] = neg_by_user[u][ci]
+            cursor[u] = ci + 1
+        order = np.random.permutation(num_samples)
+        for s0 in range(0, num_samples, self.batch_size):
+            idx = order[s0:s0 + self.batch_size]
+            yield (users[idx].astype(np.int64), pos_arr[idx], neg_arr[idx])
 
     def _cluster_prototypes(self):
         """Round-11: k-means over the *main-branch* node embeddings (users+items) into K
