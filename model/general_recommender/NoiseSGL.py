@@ -23,6 +23,7 @@ from util.pytorch import get_initializer
 from util.common import Reduction
 from data import PointwiseSamplerV2, PairwiseSamplerV2
 import numpy as np
+import math
 from time import time
 from reckit import timer
 import scipy.sparse as sp
@@ -363,6 +364,8 @@ class NoiseSGL(AbstractRecommender):
         self.ssl_mode = config["ssl_mode"]
         self.ssl_temp = config["ssl_temp"]
         self.ssl_warmup_epochs = config["ssl_warmup_epochs"] if "ssl_warmup_epochs" in config else 0
+        self.ssl_anneal = int(config["ssl_anneal"]) if "ssl_anneal" in config else 0
+        self.ssl_anneal_floor = float(config["ssl_anneal_floor"]) if "ssl_anneal_floor" in config else 0.0
         self.mlc_start_layer = config["mlc_start_layer"] if "mlc_start_layer" in config else 0
         self.mlc_layer_weight = config["mlc_layer_weight"] if "mlc_layer_weight" in config else "uniform"
         self.ssl_degree_alpha = config["ssl_degree_alpha"] if "ssl_degree_alpha" in config else 0.5
@@ -740,6 +743,34 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.proto_assign_i = assign[self.num_users:]
         self.logger.info("[proto] re-cluster K=%d time=%.1fs" % (K, time() - t0))
 
+    def _ssl_weight(self, epoch):
+        """Multiplier on the InfoNCE loss at a given epoch (R13: SSL annealing).
+
+        Warmup ramp-up reproduces the existing ssl_warmup_epochs behaviour. The new
+        annealing ramp-down (ssl_anneal>0) then decays lambda over the remaining
+        epochs so the BPR loss can fine-tune; motivated by R12c (gowalla peaks at
+        ep14 then monotone overfits to ep49, because the noise-view InfoNCE keeps
+        pulling the representation). Default ssl_anneal=0 -> backward compatible.
+        """
+        if self.ssl_warmup_epochs > 0:
+            w = min(1.0, float(epoch) / float(self.ssl_warmup_epochs))
+        else:
+            w = 1.0
+        if not self.ssl_anneal or self.epochs <= 0:
+            return w
+        warm = self.ssl_warmup_epochs if self.ssl_warmup_epochs > 0 else 0
+        if epoch <= warm:
+            return w
+        t = min(max(float(epoch - warm) / float(max(self.epochs - warm, 1)), 0.0), 1.0)
+        floor = self.ssl_anneal_floor
+        if self.ssl_anneal == 1:       # linear decay to floor
+            sched = 1.0 - t * (1.0 - floor)
+        elif self.ssl_anneal == 2:     # cosine decay to floor
+            sched = floor + (1.0 - floor) * 0.5 * (1.0 + math.cos(math.pi * t))
+        else:
+            sched = 1.0
+        return w * sched
+
     def train_model(self):
         self.logger.info(self.evaluator.metrics_info())
         stopping_step = 0
@@ -828,10 +859,7 @@ class NoiseSGL(AbstractRecommender):
                         mlc_loss += float(weight) * torch.sum((cu * u_weight) + (ci * i_weight))
                     infonce_loss = infonce_loss + mlc_loss
 
-                if self.ssl_warmup_epochs > 0:
-                    ssl_weight = min(1.0, float(epoch) / float(self.ssl_warmup_epochs))
-                else:
-                    ssl_weight = 1.0
+                ssl_weight = self._ssl_weight(epoch)
                 if fcl_loss is not None:
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss \
                         + fcl_loss + self.reg * reg_loss
