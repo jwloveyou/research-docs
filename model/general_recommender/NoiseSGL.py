@@ -56,6 +56,10 @@ class _LightGCN(nn.Module):
         # Round-6: view composition (see NoiseSGL.__init__). Set on the backbone module.
         self.view_mix = "nn"
         self.ssl_temp = 0.2
+        # Round-16: noise injection mode. 0 = SimGCL (perturb after every propagation
+        # layer, default/backward-compatible); 1 = XSimGCL (perturb the layer-0 embedding
+        # once, then propagate cleanly). Both keep the SAME LightGCN operator (R4/R6).
+        self.noise_mode = 0
         # Round-7: LightGCL-style *global* collaborative view, built from a truncated
         # SVD of the normalised adjacency (A ~= U_q diag(S_q) V_q^T). Stored in low-rank
         # factors because densifying an n x n matrix would need tens of GBs.
@@ -276,6 +280,11 @@ class _LightGCN(nn.Module):
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        # Round-16: noise_mode=1 (XSimGCL) perturbs the layer-0 embedding ONCE and then
+        # propagates it cleanly; noise_mode=0 (SimGCL, default) perturbs after every layer.
+        if perturb and eps > 0 and self.noise_mode == 1:
+            random_noise = torch.rand_like(ego_embeddings)
+            ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * eps
         all_embeddings = [ego_embeddings]
 
         for k in range(self.n_layers):
@@ -285,7 +294,7 @@ class _LightGCN(nn.Module):
                 ego_embeddings = torch_sp.mm(norm_adj[k], ego_embeddings)
             else:
                 ego_embeddings = torch_sp.mm(norm_adj, ego_embeddings)
-            if perturb and eps > 0:
+            if perturb and eps > 0 and self.noise_mode == 0:
                 # SimGCL-style embedding-space perturbation: uniform noise on the unit
                 # sphere, signed by the embedding, scaled by eps. Applied per propagation
                 # layer to inject structural-independent stochasticity (no edge dropping).
@@ -374,6 +383,9 @@ class NoiseSGL(AbstractRecommender):
         self.mlc_layer_weight = config["mlc_layer_weight"] if "mlc_layer_weight" in config else "uniform"
         self.ssl_degree_alpha = config["ssl_degree_alpha"] if "ssl_degree_alpha" in config else 0.5
         self.noise_eps = config["noise_eps"] if "noise_eps" in config else 0.1
+        # Round-16: 0 = SimGCL per-layer noise (default); 1 = XSimGCL single-shot input noise.
+        self.noise_mode = int(config["noise_mode"]) if "noise_mode" in config else 0
+        assert self.noise_mode in (0, 1)
         self.use_mlc = config["use_mlc"] if "use_mlc" in config else 1
         # Round-2: hardness-calibrated (semi-hard) negative sampling.
         self.neg_mode = config["neg_mode"] if "neg_mode" in config else "uniform"
@@ -510,6 +522,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.freq_on_views = bool(self.freq_on_views)
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
+        self.lightgcn.noise_mode = self.noise_mode
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
