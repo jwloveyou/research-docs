@@ -1,0 +1,8 @@
+BEGIN 2026年 10月 15日 星期四 03:56:15 CST
+START fusion_bpr 2026年 10月 15日 星期四 03:56:15 CST
+END   fusion_bpr rc=0 2026年 10月 15日 星期四 04:08:53 CST
+START fusion_nn 2026年 10月 15日 星期四 04:08:53 CST
+END   fusion_nn rc=0 2026年 10月 15日 星期四 04:21:40 CST
+START fusion_nn 2026年 10月 15日 星期四 04:21:40 CST
+END   fusion_nn rc=0 2026年 10月 15日 星期四 04:34:27 CST
+ALLDONE

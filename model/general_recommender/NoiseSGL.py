@@ -366,6 +366,10 @@ class NoiseSGL(AbstractRecommender):
         self.ssl_warmup_epochs = config["ssl_warmup_epochs"] if "ssl_warmup_epochs" in config else 0
         self.ssl_anneal = int(config["ssl_anneal"]) if "ssl_anneal" in config else 0
         self.ssl_anneal_floor = float(config["ssl_anneal_floor"]) if "ssl_anneal_floor" in config else 0.0
+        # Round-15: fixed anneal window (ssl_anneal_epochs>0) decays lambda to floor over
+        # exactly W epochs and then holds floor (pure-BPR fine-tune) for the rest; 0 keeps
+        # the R13 behaviour (anneal over the full self.epochs budget).
+        self.ssl_anneal_epochs = int(config["ssl_anneal_epochs"]) if "ssl_anneal_epochs" in config else 0
         self.mlc_start_layer = config["mlc_start_layer"] if "mlc_start_layer" in config else 0
         self.mlc_layer_weight = config["mlc_layer_weight"] if "mlc_layer_weight" in config else "uniform"
         self.ssl_degree_alpha = config["ssl_degree_alpha"] if "ssl_degree_alpha" in config else 0.5
@@ -761,7 +765,8 @@ class NoiseSGL(AbstractRecommender):
         warm = self.ssl_warmup_epochs if self.ssl_warmup_epochs > 0 else 0
         if epoch <= warm:
             return w
-        t = min(max(float(epoch - warm) / float(max(self.epochs - warm, 1)), 0.0), 1.0)
+        total = float(self.ssl_anneal_epochs) if self.ssl_anneal_epochs > 0 else float(self.epochs)
+        t = min(max(float(epoch - warm) / float(max(total - warm, 1)), 0.0), 1.0)
         floor = self.ssl_anneal_floor
         if self.ssl_anneal == 1:       # linear decay to floor
             sched = 1.0 - t * (1.0 - floor)

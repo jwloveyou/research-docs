@@ -1,0 +1,18 @@
+BEGIN 2026年 10月 16日 星期五 11:13:22 CST
+START yelp2018_ctrl 2026年 10月 16日 星期五 11:13:22 CST
+END   yelp2018_ctrl rc=0 2026年 10月 16日 星期五 11:55:11 CST
+--- yelp2018_ctrl best_result ---
+2026-10-16 11:55:10.746: best_result@epoch 10:
+
+2026-10-16 11:55:10.746: 		0.0306      	0.0682      	0.0560      
+--- yelp2018_ctrl peak/final ---
+peakR@20=0.06817 @ep10 | peakN@20=0.05604 @ep10 | final(ep50) R=0.05755 N=0.04814
+START yelp2018_cos 2026年 10月 16日 星期五 11:55:11 CST
+END   yelp2018_cos rc=0 2026年 10月 16日 星期五 12:37:04 CST
+--- yelp2018_cos best_result ---
+2026-10-16 12:37:03.911: best_result@epoch 8:
+
+2026-10-16 12:37:03.911: 		0.0306      	0.0682      	0.0560      
+--- yelp2018_cos peak/final ---
+peakR@20=0.06818 @ep8 | peakN@20=0.05602 @ep8 | final(ep50) R=0.06357 N=0.05234
+START amazon-book_ctrl 2026年 10月 16日 星期五 12:37:04 CST

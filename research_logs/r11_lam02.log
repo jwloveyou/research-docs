@@ -1,0 +1,140 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/yelp2018/yelp2018.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-16 06:30:21.022: my pid: 42618
+2026-10-16 06:30:21.022: model: model.general_recommender.NoiseSGL
+2026-10-16 06:30:21.022: Dataset statistics:
+Name: yelp2018
+The number of users: 31668
+The number of items: 38048
+The number of ratings: 1561406
+Average actions of users: 49.31
+Average actions of items: 41.04
+The sparsity of the dataset: 99.870412%
+
+The number of training: 1237259
+The number of validation: 0
+The number of testing: 324147
+2026-10-16 06:30:21.022: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=yelp2018
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=64
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+use_mlc=0
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=15
+batch_size=1024
+num_negatives=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=40
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=yelp2018
+seed=42
+epochs=15
+verbose=1
+stop_cnt=40
+proto_K=1000
+proto_lam=0.2
+proto_interval=1
+create_adj_mat function cost: 0.150356s
+2026-10-16 06:30:23.763: [proto] K=1000 lam=0.200 interval=1 iters=10 seed=0
+2026-10-16 06:30:23.764: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-16 06:30:24.693: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-16 06:30:28.285: [proto] re-cluster K=1000 time=3.5s
+2026-10-16 06:31:14.719: [iter 1 : loss : 1.8437 = 0.6829 + 1.1607 + 0.0001, time: 46.432262]
+2026-10-16 06:31:17.338: epoch 1:	0.02177116  	0.04816870  	0.03995165  
+2026-10-16 06:31:17.339: Find a better model.
+2026-10-16 06:31:20.898: [proto] re-cluster K=1000 time=3.5s
+2026-10-16 06:32:06.574: [iter 2 : loss : 1.7168 = 0.5603 + 1.1559 + 0.0005, time: 45.607666]
+2026-10-16 06:32:11.416: epoch 2:	0.02788194  	0.06101593  	0.05040775  
+2026-10-16 06:32:11.416: Find a better model.
+2026-10-16 06:32:14.467: [proto] re-cluster K=1000 time=3.0s
+2026-10-16 06:33:00.273: [iter 3 : loss : 1.5058 = 0.3156 + 1.1885 + 0.0016, time: 45.719744]
+2026-10-16 06:33:04.600: epoch 3:	0.02841709  	0.06249841  	0.05158915  
+2026-10-16 06:33:04.601: Find a better model.
+2026-10-16 06:33:07.609: [proto] re-cluster K=1000 time=3.0s
+2026-10-16 06:33:53.726: [iter 4 : loss : 1.3680 = 0.1765 + 1.1887 + 0.0027, time: 45.991450]
+2026-10-16 06:33:56.334: epoch 4:	0.02891120  	0.06413326  	0.05307747  
+2026-10-16 06:33:56.334: Find a better model.
+2026-10-16 06:33:59.349: [proto] re-cluster K=1000 time=3.0s
+2026-10-16 06:34:44.827: [iter 5 : loss : 1.3063 = 0.1259 + 1.1768 + 0.0036, time: 45.392030]
+2026-10-16 06:34:47.441: epoch 5:	0.02957426  	0.06571121  	0.05414449  
+2026-10-16 06:34:47.441: Find a better model.
+2026-10-16 06:34:50.594: [proto] re-cluster K=1000 time=3.1s
+2026-10-16 06:35:35.700: [iter 6 : loss : 1.2708 = 0.0989 + 1.1675 + 0.0044, time: 45.017725]
+2026-10-16 06:35:38.275: epoch 6:	0.03002580  	0.06683724  	0.05499751  
+2026-10-16 06:35:38.275: Find a better model.
+2026-10-16 06:35:41.114: [proto] re-cluster K=1000 time=2.8s
+2026-10-16 06:36:26.502: [iter 7 : loss : 1.2479 = 0.0820 + 1.1607 + 0.0052, time: 45.334014]
+2026-10-16 06:36:29.528: epoch 7:	0.03014734  	0.06709117  	0.05522116  
+2026-10-16 06:36:29.528: Find a better model.
+2026-10-16 06:36:32.245: [proto] re-cluster K=1000 time=2.7s
+2026-10-16 06:37:17.745: [iter 8 : loss : 1.2316 = 0.0702 + 1.1556 + 0.0058, time: 45.450450]
+2026-10-16 06:37:20.326: epoch 8:	0.03024207  	0.06747512  	0.05554434  
+2026-10-16 06:37:20.326: Find a better model.
+2026-10-16 06:37:23.145: [proto] re-cluster K=1000 time=2.8s
+2026-10-16 06:38:08.988: [iter 9 : loss : 1.2194 = 0.0613 + 1.1517 + 0.0064, time: 45.787989]
+2026-10-16 06:38:11.573: epoch 9:	0.03020889  	0.06745285  	0.05543315  
+2026-10-16 06:38:14.529: [proto] re-cluster K=1000 time=2.9s
+2026-10-16 06:38:59.859: [iter 10 : loss : 1.2104 = 0.0548 + 1.1486 + 0.0070, time: 45.264997]
+2026-10-16 06:39:03.727: epoch 10:	0.03036362  	0.06760614  	0.05572486  
+2026-10-16 06:39:03.727: Find a better model.
+2026-10-16 06:39:06.686: [proto] re-cluster K=1000 time=2.9s
+2026-10-16 06:39:51.816: [iter 11 : loss : 1.2028 = 0.0491 + 1.1462 + 0.0075, time: 45.076453]
+2026-10-16 06:39:54.360: epoch 11:	0.03035733  	0.06767087  	0.05560883  
+2026-10-16 06:39:54.360: Find a better model.
+2026-10-16 06:39:57.425: [proto] re-cluster K=1000 time=3.1s
+2026-10-16 06:40:42.812: [iter 12 : loss : 1.1972 = 0.0450 + 1.1442 + 0.0079, time: 45.321503]
+2026-10-16 06:40:45.716: epoch 12:	0.03041571  	0.06783461  	0.05566701  
+2026-10-16 06:40:45.716: Find a better model.
+2026-10-16 06:40:49.030: [proto] re-cluster K=1000 time=3.3s
+2026-10-16 06:41:33.996: [iter 13 : loss : 1.1923 = 0.0414 + 1.1425 + 0.0084, time: 44.906127]
+2026-10-16 06:41:36.584: epoch 13:	0.03029104  	0.06757008  	0.05563939  
+2026-10-16 06:41:39.905: [proto] re-cluster K=1000 time=3.3s
+2026-10-16 06:42:25.123: [iter 14 : loss : 1.1884 = 0.0385 + 1.1411 + 0.0088, time: 45.168775]
+2026-10-16 06:42:27.671: epoch 14:	0.03041102  	0.06784528  	0.05566268  
+2026-10-16 06:42:27.671: Find a better model.
+2026-10-16 06:42:30.911: [proto] re-cluster K=1000 time=3.2s
+2026-10-16 06:43:15.980: [iter 15 : loss : 1.1848 = 0.0357 + 1.1399 + 0.0092, time: 44.998196]
+2026-10-16 06:43:18.547: epoch 15:	0.03020895  	0.06728155  	0.05523935  
+2026-10-16 06:43:18.547: best_result@epoch 14:
+
+2026-10-16 06:43:18.548: 		0.0304      	0.0678      	0.0557      
