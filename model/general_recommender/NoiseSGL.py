@@ -82,6 +82,14 @@ class _LightGCN(nn.Module):
         # noise_eps (backward compatible); otherwise a per-node multiplier of the
         # per-layer noise magnitude (mean-normalised to 1).
         self.noise_deg_scale = None
+        # Round-33: depth-aware (layer-wise) noise schedule. noise_layer_gamma=0 keeps
+        # a uniform per-layer noise magnitude (backward compatible). gamma>0 gives
+        # deeper layers a stronger perturbation (over-smoothing grows with depth, cf.
+        # the E11 mechanism: later layers collapse toward the principal eigenvector and
+        # need a larger re-diversifying noise); gamma<0 gives the reverse. Static,
+        # parameter-free, and orthogonal to the node axis (noise_deg_gamma) and the
+        # epoch axis (noise_anneal). scale_k = eps * (1 + gamma * k/(L-1)).
+        self.noise_layer_gamma = 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style, GRU update-gate
         # analogue). gate = sigmoid(W_k . h_k + b_k) computed from the pre-propagation
         # embedding; h_{k+1} = gate*(A h_k) + (1-gate)*h_k. Adds per-node adaptive
@@ -420,8 +428,14 @@ class _LightGCN(nn.Module):
                 # layer to inject structural-independent stochasticity (no edge dropping).
                 # Round-28: when noise_deg_scale is set, the magnitude becomes density-
                 # aware (high-degree nodes over-smooth more -> stronger perturbation).
+                # Round-33: when noise_layer_gamma!=0 the magnitude also becomes depth-
+                # aware (scale_k = eps * (1 + gamma*k/(L-1))), so later layers receive
+                # a stronger re-diversifying perturbation to counter depth-accumulated
+                # over-smoothing (cf. E11).
                 random_noise = torch.rand_like(ego_embeddings)
                 scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
+                if self.noise_layer_gamma != 0.0 and self.n_layers > 1:
+                    scale = scale * (1.0 + self.noise_layer_gamma * (float(k) / float(self.n_layers - 1)))
                 ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
             all_embeddings += [ego_embeddings]
 
@@ -542,6 +556,12 @@ class NoiseSGL(AbstractRecommender):
         # nodes slightly weaker; mean scale stays ~1 so the average noise magnitude
         # is unchanged. Static, parameter-free (respects the R1/R15/R18 'static wins').
         self.noise_deg_gamma = float(config["noise_deg_gamma"]) if "noise_deg_gamma" in config else 0.0
+        # Round-33: depth-aware (layer-wise) noise schedule. 0 = uniform per-layer
+        # magnitude (backward compatible). gamma>0 -> deeper layers get a stronger
+        # perturbation (depth-accumulated over-smoothing, cf. E11); gamma<0 -> reverse.
+        # Static and orthogonal to the node axis (noise_deg_gamma) and epoch axis
+        # (noise_anneal); respects the R1/R15/R18 'static wins' law.
+        self.noise_layer_gamma = float(config["noise_layer_gamma"]) if "noise_layer_gamma" in config else 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style). gate_mode=1 turns
         # on the gated residual in _forward_gcn; gate_init sets the initial sigmoid bias
         # (positive => gate starts near 1, i.e. close to plain LightGCN, avoiding the
@@ -723,6 +743,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
         self.lightgcn.noise_deg_scale = self._noise_deg_scale
+        self.lightgcn.noise_layer_gamma = self.noise_layer_gamma
         self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.dropout_rate = self.dropout
         self.lightgcn.dropout = nn.Dropout(self.dropout)
