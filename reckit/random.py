@@ -18,9 +18,14 @@ def randint_choice(high, size=1, replace=True, p=None, exclusion=None):
         exclusion: 1-D array-like. The integers in exclusion will be excluded.
 
     Returns:
-        int or ndarray
+        list: a list of sampled integers (always a list; scalar case is wrapped).
     """
-    return list(pyx_randint_choice(high, size, replace, p, exclusion))
+    result = pyx_randint_choice(high, size, replace, p, exclusion)
+    try:
+        return list(result)
+    except TypeError:
+        # pyx returns a bare scalar for size==1, which is not iterable.
+        return [result]
 
 
 def batch_randint_choice(high, size, replace=True, p=None, exclusion=None, thread_num=1):

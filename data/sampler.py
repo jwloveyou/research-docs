@@ -123,8 +123,13 @@ def _pairwise_sampling_v2(user_pos_dict, num_samples, num_item):
     for user, pos_len in user_pos_len.items():
         try:
             pos_items = user_pos_dict[user]
-            pos_idx = randint_choice(len(pos_items), size=pos_len, replace=True)
-            pos_idx = pos_idx if isinstance(pos_idx, Iterable) else [pos_idx]
+            if len(pos_items) <= 1:
+                # degree-1 user: randint_choice raises 'high must be larger than 1'
+                # for high<=1, but the single positive is always index 0.
+                pos_idx = np.zeros(pos_len, dtype=np.int64)
+            else:
+                pos_idx = randint_choice(len(pos_items), size=pos_len, replace=True)
+                pos_idx = pos_idx if isinstance(pos_idx, Iterable) else [pos_idx]
             user_pos_sample[user] = list(pos_items[pos_idx])
 
             neg_items = randint_choice(num_item, size=pos_len, replace=True, exclusion=user_pos_dict[user])
