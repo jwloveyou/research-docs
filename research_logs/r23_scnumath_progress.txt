@@ -1,0 +1,32 @@
+BEGIN Sat Oct 17 08:59:08 CST 2026
+START gowalla_emb128_l2n1 gpu=5 Sat Oct 17 08:59:08 CST 2026
+START amazon-book_ctrl_emb128_l2n0 gpu=6 Sat Oct 17 08:59:08 CST 2026
+START gowalla_ctrl_emb128_l2n0 gpu=4 Sat Oct 17 08:59:08 CST 2026
+START yelp2018_emb128_l2n1 gpu=7 Sat Oct 17 08:59:08 CST 2026
+END   yelp2018_emb128_l2n1 rc=0 Sat Oct 17 09:20:42 CST 2026
+
+2026-10-17 09:20:41.576: 		0.0265      	0.0607      	0.0483      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+START amazon-book_emb128_l2n1 gpu=7 Sat Oct 17 09:20:42 CST 2026
+END   amazon-book_ctrl_emb128_l2n0 rc=0 Sat Oct 17 10:12:21 CST 2026
+
+2026-10-17 10:12:20.781: 		0.0203      	0.0504      	0.0391      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+START amazon-book_emb256_l2n0 gpu=6 Sat Oct 17 10:12:21 CST 2026
+END   amazon-book_emb128_l2n1 rc=0 Sat Oct 17 10:34:26 CST 2026
+
+2026-10-17 10:34:25.785: 		0.0179      	0.0448      	0.0346      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+END   gowalla_ctrl_emb128_l2n0 rc=0 Sat Oct 17 11:00:02 CST 2026
+
+2026-10-17 11:00:01.671: 		0.0575      	0.1861      	0.1578      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+END   gowalla_emb128_l2n1 rc=0 Sat Oct 17 11:00:26 CST 2026
+
+2026-10-17 11:00:26.452: 		0.0395      	0.1332      	0.0961      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+END   amazon-book_emb256_l2n0 rc=0 Sat Oct 17 11:43:27 CST 2026
+
+2026-10-17 11:43:26.828: 		0.0218      	0.0551      	0.0426      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+ALLDONE Sat Oct 17 11:43:27 CST 2026

@@ -45,6 +45,15 @@ class _LightGCN(nn.Module):
         self.dropout = nn.Dropout(0.1)
         self._user_embeddings_final = None
         self._item_embeddings_final = None
+        # Round-23: L2-normalised (cosine) scoring. When on, the final main-branch
+        # user/item embeddings are unit-normalised before the BPR ranking score and
+        # before eval-time prediction, so the inner product becomes cosine similarity.
+        # Static, parameter-free change (respects the R1/R15/R18 'static wins' law);
+        # removes embedding-magnitude (popularity/degree) bias from the ranking signal,
+        # aligning with DirectAU's uniformity goal but applied at the scoring level
+        # rather than as an extra training loss (avoids the R9 slow-convergence pitfall).
+        # Default 0 = off (backward compatible).
+        self.l2_norm = False
         # Round-3: SimGCF frequency-signal-scaler layer weights (None -> uniform mean).
         self.freq_alphas = None
         self.freq_flip = False
@@ -144,6 +153,12 @@ class _LightGCN(nn.Module):
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
+
+        if self.l2_norm:
+            # Round-23: unit-normalise the fused main-branch embeddings used for the BPR
+            # ranking score (the contrastive views are already normalised separately).
+            user_embeddings = F.normalize(user_embeddings, dim=1)
+            item_embeddings = F.normalize(item_embeddings, dim=1)
 
         user_embs = F.embedding(users, user_embeddings)
         item_embs = F.embedding(items, item_embeddings)
@@ -425,6 +440,9 @@ class _LightGCN(nn.Module):
         super(_LightGCN, self).eval()
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
+        if self.l2_norm:
+            self._user_embeddings_final = F.normalize(self._user_embeddings_final, dim=1)
+            self._item_embeddings_final = F.normalize(self._item_embeddings_final, dim=1)
 
 
 class NoiseSGL(AbstractRecommender):
@@ -538,6 +556,10 @@ class NoiseSGL(AbstractRecommender):
         self.directau_unif = float(config["directau_unif"]) if "directau_unif" in config else 0.0
         self.directau_t = float(config["directau_t"]) if "directau_t" in config else 2.0
         self.directau_k = int(config["directau_k"]) if "directau_k" in config else 512
+        # Round-23: L2-normalised (cosine) scoring (4th-component candidate). Static,
+        # parameter-free; normalises the final fused embeddings before BPR/eval scoring.
+        self.l2_norm = int(config["l2_norm"]) if "l2_norm" in config else 0
+        assert self.l2_norm in (0, 1)
         # Round-11: NCL-style prototype (cluster) interest injection.
         self.proto_K = int(config["proto_K"]) if "proto_K" in config else 0
         self.proto_lam = float(config["proto_lam"]) if "proto_lam" in config else 0.0
@@ -641,6 +663,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
+        self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.gate_mode = self.gate_mode
         if self.gate_mode == 1:
             self.lightgcn.gate_proj = nn.ModuleList(
