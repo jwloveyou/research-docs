@@ -90,6 +90,17 @@ class _LightGCN(nn.Module):
         # parameter-free, and orthogonal to the node axis (noise_deg_gamma) and the
         # epoch axis (noise_anneal). scale_k = eps * (1 + gamma * k/(L-1)).
         self.noise_layer_gamma = 0.0
+        # Round-34: GCNII/APPNP-style *static* initial-residual connection.
+        # res_alpha=0 keeps the plain LightGCN propagation (backward compatible);
+        # res_alpha>0 blends a fraction of the layer-0 embedding back after each
+        # propagation step: h_{k+1} = (1-alpha)*(A h_k) + alpha*h_0. This directly
+        # counters depth-accumulated over-smoothing (E11: the final embedding collapses
+        # toward the principal eigenvector) by keeping node-idiosyncratic (personalised)
+        # signal alive, complementing the noise augmentation's rank-release rather than
+        # replacing it. Static and parameter-free (respects the R1/R15/R18 'static wins'
+        # law); applied identically on the main branch and the noise views so the
+        # propagation operator stays shared (respects R4/R6/R7).
+        self.res_alpha = 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style, GRU update-gate
         # analogue). gate = sigmoid(W_k . h_k + b_k) computed from the pre-propagation
         # embedding; h_{k+1} = gate*(A h_k) + (1-gate)*h_k. Adds per-node adaptive
@@ -406,6 +417,8 @@ class _LightGCN(nn.Module):
             random_noise = torch.rand_like(ego_embeddings)
             scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
             ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
+        # Round-34: layer-0 snapshot for the static initial-residual connection.
+        initial_embeddings = ego_embeddings
         all_embeddings = [ego_embeddings]
 
         for k in range(self.n_layers):
@@ -422,6 +435,12 @@ class _LightGCN(nn.Module):
                 # noise-view / eval calls so the operator stays identical (R4/R6).
                 gate = torch.sigmoid(self.gate_proj[k](prev))
                 ego_embeddings = gate * ego_embeddings + (1.0 - gate) * prev
+            if self.res_alpha > 0.0:
+                # Round-34: GCNII/APPNP static initial residual (see _LightGCN.__init__).
+                # Applied BEFORE the SSL noise so the residual is part of the clean
+                # propagation operator and the noise stays the only SSL-specific
+                # perturbation (main branch and noise views share the identical operator).
+                ego_embeddings = (1.0 - self.res_alpha) * ego_embeddings + self.res_alpha * initial_embeddings
             if perturb and eps > 0 and self.noise_mode == 0:
                 # SimGCL-style embedding-space perturbation: uniform noise on the unit
                 # sphere, signed by the embedding, scaled by eps. Applied per propagation
@@ -629,6 +648,13 @@ class NoiseSGL(AbstractRecommender):
         # problem). 0 = off (backward compatible).
         self.dropout = float(config["dropout"]) if "dropout" in config else 0.0
         assert 0.0 <= self.dropout < 1.0
+        # Round-34: GCNII/APPNP-style static initial-residual strength (4th-component
+        # candidate #9). 0 = plain LightGCN propagation (backward compatible). Static and
+        # parameter-free; targets the depth-accumulated over-smoothing that E11 identified,
+        # complementing (not replacing) the noise augmentation's rank-release effect.
+        # Respects R4/R6/R7: applied identically on the main branch and the noise views.
+        self.res_alpha = float(config["res_alpha"]) if "res_alpha" in config else 0.0
+        assert 0.0 <= self.res_alpha < 1.0
         # Round-11: NCL-style prototype (cluster) interest injection.
         self.proto_K = int(config["proto_K"]) if "proto_K" in config else 0
         self.proto_lam = float(config["proto_lam"]) if "proto_lam" in config else 0.0
@@ -747,6 +773,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.dropout_rate = self.dropout
         self.lightgcn.dropout = nn.Dropout(self.dropout)
+        self.lightgcn.res_alpha = self.res_alpha
         self.lightgcn.gate_mode = self.gate_mode
         if self.gate_mode == 1:
             self.lightgcn.gate_proj = nn.ModuleList(
