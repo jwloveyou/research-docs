@@ -42,7 +42,16 @@ class _LightGCN(nn.Module):
         self.n_layers = n_layers
         self.user_embeddings = nn.Embedding(self.num_users, self.embed_dim)
         self.item_embeddings = nn.Embedding(self.num_items, self.embed_dim)
-        self.dropout = nn.Dropout(0.1)
+        # Round-25: main-branch embedding (input/node) dropout as an overfitting
+        # regulariser for the BPR fine-tune phase. Standard GNN regularisation
+        # (Srivastava et al. 2014; NGCF message-dropout; SGL node-dropout aug_type=nd)
+        # applied ONLY to the main (prediction) branch input embeddings, so the SSL
+        # noise views stay identical (respects R4/R6/R7: don't touch the propagation
+        # operator and keep main/view filters identical). Static, parameter-free change.
+        # Default rate 0 = off (backward compatible); nn.Dropout no-ops in eval() mode
+        # so the eval-time embeddings stay deterministic.
+        self.dropout_rate = 0.0
+        self.dropout = nn.Dropout(self.dropout_rate)
         self._user_embeddings_final = None
         self._item_embeddings_final = None
         # Round-23: L2-normalised (cosine) scoring. When on, the final main-branch
@@ -152,7 +161,7 @@ class _LightGCN(nn.Module):
             init(self.item_embeddings.weight)
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
-        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
+        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True, apply_dropout=True)
 
         if self.l2_norm:
             # Round-23: unit-normalise the fused main-branch embeddings used for the BPR
@@ -371,8 +380,14 @@ class _LightGCN(nn.Module):
         return loss
 
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
-                     use_gl=False, apply_proto=False):
+                     use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        if apply_dropout and self.dropout_rate > 0:
+            # Round-25: input/node dropout on the MAIN branch only (BPR overfitting
+            # regulariser). The contrastive noise views never pass apply_dropout=True, so
+            # the SSL self-consistency signal is unaffected. nn.Dropout is a no-op when
+            # self.training is False, hence eval()/predict stay deterministic.
+            ego_embeddings = self.dropout(ego_embeddings)
         # Round-16: noise_mode=1 (XSimGCL) perturbs the layer-0 embedding ONCE and then
         # propagates it cleanly; noise_mode=0 (SimGCL, default) perturbs after every layer.
         if perturb and eps > 0 and self.noise_mode == 1:
@@ -560,6 +575,11 @@ class NoiseSGL(AbstractRecommender):
         # parameter-free; normalises the final fused embeddings before BPR/eval scoring.
         self.l2_norm = int(config["l2_norm"]) if "l2_norm" in config else 0
         assert self.l2_norm in (0, 1)
+        # Round-25: main-branch embedding (input/node) dropout rate. Static, parameter-
+        # free regulariser for the BPR fine-tune phase (the R12c/R15 peak-then-overfit
+        # problem). 0 = off (backward compatible).
+        self.dropout = float(config["dropout"]) if "dropout" in config else 0.0
+        assert 0.0 <= self.dropout < 1.0
         # Round-11: NCL-style prototype (cluster) interest injection.
         self.proto_K = int(config["proto_K"]) if "proto_K" in config else 0
         self.proto_lam = float(config["proto_lam"]) if "proto_lam" in config else 0.0
@@ -664,6 +684,8 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
         self.lightgcn.l2_norm = bool(self.l2_norm)
+        self.lightgcn.dropout_rate = self.dropout
+        self.lightgcn.dropout = nn.Dropout(self.dropout)
         self.lightgcn.gate_mode = self.gate_mode
         if self.gate_mode == 1:
             self.lightgcn.gate_proj = nn.ModuleList(
