@@ -1,0 +1,30 @@
+BEGIN Sat Oct 17 08:18:10 CST 2026
+START lastfm-2k_lgn_s43 gpu=7 Sat Oct 17 08:18:10 CST 2026
+START lastfm-2k_fusion_s43 gpu=6 Sat Oct 17 08:18:10 CST 2026
+END   lastfm-2k_fusion_s43 rc=0 Sat Oct 17 08:23:04 CST 2026
+--- lastfm-2k_fusion_s43 best ---
+2026-10-17 08:23:03.570: best_result@epoch 136:
+
+2026-10-17 08:23:03.570: 		0.1435      	0.4134      	0.3625      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+START lastfm-2k_fusion_s44 gpu=6 Sat Oct 17 08:23:04 CST 2026
+END   lastfm-2k_lgn_s43 rc=0 Sat Oct 17 08:23:07 CST 2026
+--- lastfm-2k_lgn_s43 best ---
+2026-10-17 08:23:06.589: best_result@epoch 197:
+
+2026-10-17 08:23:06.590: 		0.1378      	0.3983      	0.3450      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+START lastfm-2k_lgn_s44 gpu=7 Sat Oct 17 08:23:07 CST 2026
+END   lastfm-2k_fusion_s44 rc=0 Sat Oct 17 08:27:52 CST 2026
+--- lastfm-2k_fusion_s44 best ---
+2026-10-17 08:27:51.634: best_result@epoch 123:
+
+2026-10-17 08:27:51.634: 		0.1433      	0.4134      	0.3629      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+END   lastfm-2k_lgn_s44 rc=0 Sat Oct 17 08:28:03 CST 2026
+--- lastfm-2k_lgn_s44 best ---
+2026-10-17 08:28:02.853: best_result@epoch 197:
+
+2026-10-17 08:28:02.853: 		0.1377      	0.3987      	0.3446      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+ALLDONE Sat Oct 17 08:28:03 CST 2026
