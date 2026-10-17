@@ -16,3 +16,4 @@ END   yelp2018_cos rc=0 2026年 10月 16日 星期五 12:37:04 CST
 --- yelp2018_cos peak/final ---
 peakR@20=0.06818 @ep8 | peakN@20=0.05602 @ep8 | final(ep50) R=0.06357 N=0.05234
 START amazon-book_ctrl 2026年 10月 16日 星期五 12:37:04 CST
+NOTE $(date): amazon-book_ctrl was interrupted at epoch 4 (12:52) — a concurrent driver (R18 embed_size=128, PID 25104, started 21:40) took the single GPU. r14 driver died; amazon ctrl/cos NOT completed.
