@@ -1,0 +1,148 @@
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-17 12:34:18.517: my pid: 3416508
+2026-10-17 12:34:18.517: model: model.general_recommender.NoiseSGL
+2026-10-17 12:34:18.517: Dataset statistics:
+Name: yelp2018
+The number of users: 31668
+The number of items: 38048
+The number of ratings: 1561406
+Average actions of users: 49.31
+Average actions of items: 41.04
+The sparsity of the dataset: 99.870412%
+
+The number of training: 1237259
+The number of validation: 0
+The number of testing: 324147
+2026-10-17 12:34:18.517: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=yelp2018
+file_column=UI
+sep=','
+gpu_id=6
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=44
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=256
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=20
+batch_size=1024
+num_negatives=1
+l2_norm=0
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=yelp2018
+seed=44
+epochs=20
+verbose=1
+stop_cnt=500
+embed_size=256
+view_mix=nn
+use_mlc=0
+noise_eps=0.2
+ssl_reg=0.1
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+l2_norm=0
+gpu_id=6
+create_adj_mat function cost: 0.131556s
+2026-10-17 12:34:21.348: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-17 12:34:21.811: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-17 12:36:03.156: [iter 1 : loss : 1.7416 = 0.6055 + 1.1358 + 0.0003, time: 101.343535]
+2026-10-17 12:36:04.911: epoch 1:	0.02788193  	0.06116471  	0.05023528  
+2026-10-17 12:36:04.911: Find a better model.
+2026-10-17 12:37:45.621: [iter 2 : loss : 1.3870 = 0.2197 + 1.1653 + 0.0021, time: 100.648963]
+2026-10-17 12:37:47.075: epoch 2:	0.02962007  	0.06582240  	0.05421985  
+2026-10-17 12:37:47.076: Find a better model.
+2026-10-17 12:39:27.600: [iter 3 : loss : 1.2275 = 0.0960 + 1.1277 + 0.0039, time: 100.456601]
+2026-10-17 12:39:29.051: epoch 3:	0.03081203  	0.06879836  	0.05683646  
+2026-10-17 12:39:29.051: Find a better model.
+2026-10-17 12:41:09.539: [iter 4 : loss : 1.1555 = 0.0611 + 1.0892 + 0.0053, time: 100.416546]
+2026-10-17 12:41:11.055: epoch 4:	0.03128242  	0.07004371  	0.05779536  
+2026-10-17 12:41:11.055: Find a better model.
+2026-10-17 12:42:51.434: [iter 5 : loss : 1.1027 = 0.0435 + 1.0527 + 0.0065, time: 100.319155]
+2026-10-17 12:42:52.905: epoch 5:	0.03156818  	0.07083385  	0.05834804  
+2026-10-17 12:42:52.905: Find a better model.
+2026-10-17 12:44:33.259: [iter 6 : loss : 1.0551 = 0.0328 + 1.0148 + 0.0075, time: 100.294271]
+2026-10-17 12:44:34.668: epoch 6:	0.03159975  	0.07076342  	0.05835141  
+2026-10-17 12:46:14.713: [iter 7 : loss : 1.0086 = 0.0262 + 0.9740 + 0.0084, time: 99.977460]
+2026-10-17 12:46:16.151: epoch 7:	0.03151450  	0.07058334  	0.05832066  
+2026-10-17 12:47:56.505: [iter 8 : loss : 0.9608 = 0.0214 + 0.9301 + 0.0093, time: 100.289439]
+2026-10-17 12:47:57.958: epoch 8:	0.03153187  	0.07048754  	0.05832181  
+2026-10-17 12:49:38.176: [iter 9 : loss : 0.9108 = 0.0179 + 0.8829 + 0.0100, time: 100.151561]
+2026-10-17 12:49:39.606: epoch 9:	0.03149871  	0.07021595  	0.05801211  
+2026-10-17 12:51:19.695: [iter 10 : loss : 0.8589 = 0.0155 + 0.8328 + 0.0106, time: 100.019355]
+2026-10-17 12:51:21.137: epoch 10:	0.03141036  	0.06987499  	0.05769378  
+2026-10-17 12:53:01.273: [iter 11 : loss : 0.8049 = 0.0135 + 0.7801 + 0.0112, time: 100.063306]
+2026-10-17 12:53:02.720: epoch 11:	0.03129825  	0.06967477  	0.05758759  
+2026-10-17 12:54:43.284: [iter 12 : loss : 0.7490 = 0.0120 + 0.7253 + 0.0117, time: 100.495918]
+2026-10-17 12:54:44.726: epoch 12:	0.03123986  	0.06931636  	0.05731854  
+2026-10-17 12:56:25.006: [iter 13 : loss : 0.6918 = 0.0108 + 0.6688 + 0.0121, time: 100.220920]
+2026-10-17 12:56:26.442: epoch 13:	0.03111669  	0.06907688  	0.05712127  
+2026-10-17 12:58:06.677: [iter 14 : loss : 0.6336 = 0.0099 + 0.6113 + 0.0124, time: 100.165111]
+2026-10-17 12:58:08.132: epoch 14:	0.03094304  	0.06856965  	0.05681130  
+2026-10-17 12:59:48.273: [iter 15 : loss : 0.5751 = 0.0091 + 0.5532 + 0.0127, time: 100.081076]
+2026-10-17 12:59:49.707: epoch 15:	0.03088308  	0.06843440  	0.05666947  
+2026-10-17 13:01:30.314: [iter 16 : loss : 0.5166 = 0.0084 + 0.4953 + 0.0129, time: 100.543802]
+2026-10-17 13:01:31.778: epoch 16:	0.03072047  	0.06808744  	0.05648709  
+2026-10-17 13:03:12.071: [iter 17 : loss : 0.4591 = 0.0079 + 0.4381 + 0.0131, time: 100.233767]
+2026-10-17 13:03:13.531: epoch 17:	0.03064940  	0.06780682  	0.05634985  
+2026-10-17 13:04:53.690: [iter 18 : loss : 0.4029 = 0.0076 + 0.3821 + 0.0132, time: 100.093262]
+2026-10-17 13:04:55.150: epoch 18:	0.03056417  	0.06768940  	0.05625040  
+2026-10-17 13:06:35.376: [iter 19 : loss : 0.3486 = 0.0072 + 0.3281 + 0.0133, time: 100.155690]
+2026-10-17 13:06:36.820: epoch 19:	0.03062889  	0.06779936  	0.05636657  
+2026-10-17 13:08:17.432: [iter 20 : loss : 0.2968 = 0.0069 + 0.2766 + 0.0133, time: 100.546964]
+2026-10-17 13:08:18.891: epoch 20:	0.03052470  	0.06756136  	0.05627168  
+2026-10-17 13:08:18.892: best_result@epoch 5:
+
+2026-10-17 13:08:18.892: 		0.0316      	0.0708      	0.0583      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/zhangxu/SGL-Torch/data/dataset.py:331: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/zhangxu/SGL-Torch/data/dataset.py:339: UserWarning: /home/zhangxu/SGL-Torch/dataset/yelp2018/yelp2018.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
