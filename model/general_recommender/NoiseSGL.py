@@ -498,6 +498,19 @@ class NoiseSGL(AbstractRecommender):
         self.ssl_ratio = config["ssl_ratio"]
         self.ssl_mode = config["ssl_mode"]
         self.ssl_temp = config["ssl_temp"]
+        # Round-30: InfoNCE temperature schedule (MM-TS WACV'26 / DySTreSS / RL temperature
+        # curriculum). ssl_temp_anneal=0 keeps the fixed ssl_temp (backward compatible);
+        # 1 = linear, 2 = cosine interpolation of the InfoNCE temperature from
+        # ssl_temp_start to ssl_temp_end over ssl_temp_anneal_epochs epochs (0 => full
+        # training budget), then holds. Operates on the *shape* of the InfoNCE (which
+        # negatives the gradient concentrates on) rather than its overall weight
+        # (R13/R15 ssl_anneal), so it is orthogonal to all 3 fusion components. Static
+        # schedule, no learnable parameters (respects the R1/R15/R18 'static wins' law).
+        self.ssl_temp_anneal = int(config["ssl_temp_anneal"]) if "ssl_temp_anneal" in config else 0
+        assert self.ssl_temp_anneal in (0, 1, 2)
+        self.ssl_temp_anneal_epochs = int(config["ssl_temp_anneal_epochs"]) if "ssl_temp_anneal_epochs" in config else 0
+        self.ssl_temp_start = float(config["ssl_temp_start"]) if "ssl_temp_start" in config else self.ssl_temp
+        self.ssl_temp_end = float(config["ssl_temp_end"]) if "ssl_temp_end" in config else self.ssl_temp
         self.ssl_warmup_epochs = config["ssl_warmup_epochs"] if "ssl_warmup_epochs" in config else 0
         self.ssl_anneal = int(config["ssl_anneal"]) if "ssl_anneal" in config else 0
         self.ssl_anneal_floor = float(config["ssl_anneal_floor"]) if "ssl_anneal_floor" in config else 0.0
@@ -751,6 +764,9 @@ class NoiseSGL(AbstractRecommender):
         if self.noise_anneal:
             self.logger.info("[noise-curriculum] anneal=%d epochs=%d eps=%.3f->%.3f" % (
                 self.noise_anneal, self.noise_anneal_epochs, self.noise_eps, self.noise_eps_floor))
+        if self.ssl_temp_anneal:
+            self.logger.info("[temp-sched] anneal=%d epochs=%d tau=%.3f->%.3f" % (
+                self.ssl_temp_anneal, self.ssl_temp_anneal_epochs, self.ssl_temp_start, self.ssl_temp_end))
         if self.freq_scaler:
             alphas = self._fit_freq_alphas()
             if self.freq_norm:
@@ -1036,6 +1052,31 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.proto_assign_i = assign[self.num_users:]
         self.logger.info("[proto] re-cluster K=%d time=%.1fs" % (K, time() - t0))
 
+    def _ssl_temp(self, epoch):
+        """Effective InfoNCE temperature at a given epoch (Round-30: temperature schedule).
+
+        ssl_temp_anneal=0 keeps the fixed ssl_temp (backward compatible). Otherwise the
+        InfoNCE temperature is interpolated from ssl_temp_start to ssl_temp_end over
+        ssl_temp_anneal_epochs epochs (linear or cosine) and then held. Unlike the
+        SSL-weight annealing (R13/R15, which scales the whole InfoNCE magnitude), this
+        changes the *sharpness* of the contrastive distribution -- which negatives the
+        gradient concentrates on -- so it is orthogonal to all existing fusion modules.
+        Motivated by MM-TS (temperature schedules for long-tail contrastive learning,
+        arXiv:2603.08202) and DySTreSS (dynamic temperature scaling).
+        """
+        if not self.ssl_temp_anneal or self.ssl_temp_start == self.ssl_temp_end or self.epochs <= 0:
+            return self.ssl_temp_start
+        total = float(self.ssl_temp_anneal_epochs) if self.ssl_temp_anneal_epochs > 0 else float(self.epochs)
+        t = min(max(float(epoch - 1) / float(max(total - 1, 1.0)), 0.0), 1.0)
+        a, b = self.ssl_temp_start, self.ssl_temp_end
+        if self.ssl_temp_anneal == 1:          # linear interpolation
+            sched = a + (b - a) * t
+        elif self.ssl_temp_anneal == 2:        # cosine interpolation
+            sched = b + (a - b) * 0.5 * (1.0 + math.cos(math.pi * t))
+        else:
+            sched = a
+        return max(sched, 1e-4)
+
     def _noise_eps(self, epoch):
         """Effective per-layer noise magnitude at a given epoch (Round-20: noise curriculum).
 
@@ -1111,6 +1152,10 @@ class NoiseSGL(AbstractRecommender):
             data_iter = self._pairwise_iter()
             self.lightgcn.train()
             cur_eps = self._noise_eps(epoch)
+            cur_temp = self._ssl_temp(epoch)
+            if cur_temp != self.lightgcn.ssl_temp:
+                self.lightgcn.ssl_temp = cur_temp
+                self.ssl_temp = cur_temp
             for bat_users, bat_pos_items, bat_neg_items in data_iter:
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
