@@ -144,6 +144,20 @@ class _LightGCN(nn.Module):
         self.directau_unif = 0.0
         self.directau_t = 2.0
         self.directau_k = 512
+        # Round-35: DirectSpec-style spectral balancing (ACM TORS 2025, arXiv:2406.12032
+        # "Balancing Embedding Spectrum for Recommendation"). spec_bal>0 adds a static,
+        # parameter-free regulariser that flattens the embedding spectrum (raises the
+        # effective rank) by minimising the scale-invariant spectral concentration
+        # ||C||_F^2 / trace(C)^2 of the batch Gram C = E^T E (rows unit-normalised inside
+        # the loss so trace(C)=B fixes the scale, then scaled by B to match the summed
+        # BPR/InfoNCE scale). This directly counters the embedding-collapse that E11
+        # identified as the root pathology. It is computed on the *batch* of fused
+        # main-branch embeddings (representation layer only, like R8) and does NOT touch
+        # the propagation operator (respects R4/R6/R7). Default 0 = off (backward
+        # compatible). spec_bal_center=1 removes the per-dimension mean first, which is
+        # exactly the 'collapse to a constant vector' component DirectSpec isolates.
+        self.spec_bal = 0.0
+        self.spec_bal_center = 1
         # Round-11: NCL-style (WWW'22, arXiv:2202.06200) prototype (cluster) interest
         # injection. k-means clusters the *main-branch* node embeddings into K
         # prototypes; each node's final embedding is convex-blended toward its nearest
@@ -261,7 +275,15 @@ class _LightGCN(nn.Module):
         if (self.directau_align > 0) or (self.directau_unif > 0):
             dau_loss = self._directau_loss(users, items, user_embeddings, item_embeddings)
 
-        return sup_logits, infonce, fcl_loss, dau_loss
+        spec_loss = None
+        if self.spec_bal > 0:
+            # Round-35: DirectSpec-style spectral balancing on the batch of fused main
+            # embeddings (representation layer only). user_embs/item_embs are the batch
+            # rows of the final fused embeddings, so this is orthogonal to the propagation
+            # operator (R4/R6/R7) and to the three fusion components.
+            spec_loss = self._spec_bal_loss(user_embs, item_embs)
+
+        return sup_logits, infonce, fcl_loss, dau_loss, spec_loss
 
     @staticmethod
     def _off_diagonal(x):
@@ -344,6 +366,36 @@ class _LightGCN(nn.Module):
             unif_i = torch.log(torch.exp(-self.directau_t * d_i).mean() + 1e-12)
             loss = loss + self.directau_unif * (unif_u + unif_i)
         return loss
+
+    def _spec_bal_loss(self, user_embs, item_embs):
+        """DirectSpec-style spectral balancing (Round-35, 4th-component candidate #10).
+
+        Flattens the singular-value spectrum of the batch embedding matrix by minimising
+        the scale-invariant spectral concentration ratio  ||C||_F^2 / trace(C)^2  where
+        C = E^T E is the [d, d] Gram of the batch embeddings. For a perfectly flat
+        spectrum (orthogonal, equal-variance dimensions) the ratio is 1/d (minimum); for
+        a rank-1 collapse it is 1 (maximum). Minimising it therefore raises the effective
+        rank / spectral entropy -- the exact quantity E11 showed is the mechanism behind
+        the noise augmentation's benefit (41% -> 97% effective rank).
+
+        To keep the gradient well-scaled WITHOUT imposing an arbitrary variance target
+        (which would collide with the BPR inner-product scale and the R23 'norm carries
+        popularity signal' finding), the rows are unit-normalised *inside this loss only*
+        (so trace(C)=B is fixed and the objective becomes a pure spectral-shape term on
+        the unit sphere) and the scalar ratio is multiplied by the batch size B so the
+        term is on the same O(B) scale as the summed BPR/InfoNCE losses. Cheap closed
+        form: no SVD / eigendecomposition is needed.
+        """
+        def concentration(E):
+            if self.spec_bal_center:
+                E = E - E.mean(dim=0, keepdim=True)
+            E = F.normalize(E, dim=1)          # unit-norm rows: trace(C) = B (fixed scale)
+            B = float(E.size(0))
+            C = E.t() @ E                       # [d, d]
+            tr = torch.trace(C)                 # == B up to fp error
+            fro2 = torch.sum(C * C)             # sum of fourth powers of singular values
+            return B * fro2 / (tr * tr + 1e-12)  # in [B/d, B], O(B) scale
+        return 0.5 * (concentration(user_embs) + concentration(item_embs))
 
     def _apply_global(self, x):
         """Global-view propagation with the rank-q SVD approximation of the normalised
@@ -639,6 +691,11 @@ class NoiseSGL(AbstractRecommender):
         self.directau_unif = float(config["directau_unif"]) if "directau_unif" in config else 0.0
         self.directau_t = float(config["directau_t"]) if "directau_t" in config else 2.0
         self.directau_k = int(config["directau_k"]) if "directau_k" in config else 512
+        # Round-35: DirectSpec-style spectral balancing coefficient (4th-component
+        # candidate #10). 0 = off (backward compatible).
+        self.spec_bal = float(config["spec_bal"]) if "spec_bal" in config else 0.0
+        self.spec_bal_center = int(config["spec_bal_center"]) if "spec_bal_center" in config else 1
+        assert self.spec_bal_center in (0, 1)
         # Round-23: L2-normalised (cosine) scoring (4th-component candidate). Static,
         # parameter-free; normalises the final fused embeddings before BPR/eval scoring.
         self.l2_norm = int(config["l2_norm"]) if "l2_norm" in config else 0
@@ -796,6 +853,8 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.directau_unif = self.directau_unif
         self.lightgcn.directau_t = self.directau_t
         self.lightgcn.directau_k = self.directau_k
+        self.lightgcn.spec_bal = self.spec_bal
+        self.lightgcn.spec_bal_center = self.spec_bal_center
         self.lightgcn.proto_K = self.proto_K
         self.lightgcn.proto_lam = self.proto_lam
         if self.proto_K > 0:
@@ -1208,7 +1267,7 @@ class NoiseSGL(AbstractRecommender):
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
-                sup_logits, infonce_loss, fcl_loss, dau_loss = self.lightgcn(
+                sup_logits, infonce_loss, fcl_loss, dau_loss, spec_loss = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=cur_eps)
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
@@ -1273,13 +1332,13 @@ class NoiseSGL(AbstractRecommender):
                     infonce_loss = infonce_loss + mlc_loss
 
                 ssl_weight = self._ssl_weight(epoch)
+                loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
                 if fcl_loss is not None:
-                    loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss \
-                        + fcl_loss + self.reg * reg_loss
-                else:
-                    loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
+                    loss = loss + fcl_loss
                 if dau_loss is not None:
                     loss = loss + dau_loss
+                if spec_loss is not None:
+                    loss = loss + self.spec_bal * spec_loss
                 total_loss += loss
                 total_bpr_loss += bpr_loss
                 total_reg_loss += self.reg * reg_loss
