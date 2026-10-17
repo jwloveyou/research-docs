@@ -571,6 +571,18 @@ class NoiseSGL(AbstractRecommender):
         self.stop_cnt = config["stop_cnt"]
         self.learner = config["learner"]
         self.lr = config['lr']
+        # Round-38: Adam decoupled weight decay (regularization-axis 4th-component
+        # candidate #12). weight_decay=0 keeps the default Adam (backward compatible);
+        # >0 shrinks the FULL embedding table every step (decoupled from the batch-L2
+        # reg_loss which is controlled by self.reg). Static, no learnable parameters
+        # (respects the R1/R15/R18 'static wins' law), orthogonal to the 3 fusion
+        # components (noise / SSL anneal / capacity) and to the 6 queued candidates.
+        # Motivation: R12c/R15/R18 show a mild deterministic overfit in the pure-BPR
+        # fine-tune phase (after ssl_anneal_epochs=30 the SSL weight is 0); stronger L2
+        # regularisation counters it. Literature: 'Revisiting BPR: A Replicability Study'
+        # (arXiv:2409.14217) -- proper regularisation is the main gap between BPR and
+        # SOTA; 'On the Overlooked Pitfalls of Weight Decay' (arXiv:2011.11152).
+        self.weight_decay = float(config["weight_decay"]) if "weight_decay" in config else 0.0
         self.param_init = config["param_init"]
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
@@ -885,6 +897,9 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[directau] align=%.3f unif=%.3f t=%.2f k=%d" % (
                 self.directau_align, self.directau_unif, self.directau_t, self.directau_k))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
+        if self.weight_decay:
+            self.logger.info("[weight-decay] wd=%.2e (Adam decoupled; batch-L2 reg=%.2e)" % (
+                self.weight_decay, self.reg))
         if self.noise_anneal:
             self.logger.info("[noise-curriculum] anneal=%d epochs=%d eps=%.3f->%.3f" % (
                 self.noise_anneal, self.noise_anneal_epochs, self.noise_eps, self.noise_eps_floor))
@@ -912,7 +927,8 @@ class NoiseSGL(AbstractRecommender):
             self.lightgcn.reset_parameters(pretrain=self.pretrain_flag, dir=self.save_dir)
         else:
             self.lightgcn.reset_parameters(init_method=self.param_init)
-        self.optimizer = torch.optim.Adam(self.lightgcn.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.lightgcn.parameters(), lr=self.lr,
+                                          weight_decay=self.weight_decay)
 
     def _init_global_view(self, adj):
         """Truncated SVD of the (symmetric) normalised adjacency: A ~= U_q diag(S_q) V_q^T.
