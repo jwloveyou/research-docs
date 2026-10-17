@@ -66,6 +66,12 @@ class _LightGCN(nn.Module):
         # Round-3: SimGCF frequency-signal-scaler layer weights (None -> uniform mean).
         self.freq_alphas = None
         self.freq_flip = False
+        # Round-39: static (non-uniform) layer-aggregation weights. None = uniform
+        # mean-pooling over the L+1 layer embeddings (backward compatible). Otherwise a
+        # length-(L+1) tensor summing to 1, applied to the FINAL layer pool in
+        # _forward_gcn. The same operator is shared by the main branch, the noise views
+        # and eval(), so it respects R4/R6/R7 (identical aggregation everywhere).
+        self.agg_weights = None
         # Round-4: where the scaler is applied. main = prediction branch (also used at
         # eval); views = the two contrastive SSL branches. Enables isolating WHICH branch
         # caused Round-3's slow convergence (arXiv:2512.15744 drop-in on NoiseSGL).
@@ -523,7 +529,11 @@ class _LightGCN(nn.Module):
             w = self.freq_alphas.to(ego_embeddings.device).view(1, -1, 1)
             all_embeddings = (torch.stack(all_embeddings, dim=1) * w).sum(dim=1)
         else:
-            all_embeddings = torch.stack(all_embeddings, dim=1).mean(dim=1)
+            if self.agg_weights is not None:
+                _w = self.agg_weights.to(ego_embeddings.device).view(1, -1, 1)
+                all_embeddings = (torch.stack(all_embeddings, dim=1) * _w).sum(dim=1)
+            else:
+                all_embeddings = torch.stack(all_embeddings, dim=1).mean(dim=1)
         user_embeddings, item_embeddings = torch.split(all_embeddings, [self.num_users, self.num_items], dim=0)
         if self.freq_flip:
             # "space flip" of the high-pass SimGCF variant
@@ -741,6 +751,47 @@ class NoiseSGL(AbstractRecommender):
         # Respects R4/R6/R7: applied identically on the main branch and the noise views.
         self.res_alpha = float(config["res_alpha"]) if "res_alpha" in config else 0.0
         assert 0.0 <= self.res_alpha < 1.0
+        # Round-39: static non-uniform layer-aggregation weights (4th-component
+        # candidate #13). agg_weights="uniform" keeps the LightGCN mean-pooling over the
+        # L+1 layer embeddings (backward compatible). Named schemes set a static,
+        # parameter-free weighting of the final layer pool (shared by main branch, noise
+        # views and eval, so the aggregation operator stays identical, cf. R4/R6/R7):
+        #   "shallow" favours layer-0 (w_k propto L+1-k), "deep" favours the last layer
+        #   (w_k propto k+1), "geom" uses w_k propto agg_alpha^k, "first"/"last" keep a
+        #   single layer, and an explicit comma list ("0.4,0.3,0.2,0.1") is also accepted.
+        # Weights are normalised to sum to 1 so "uniform" matches mean-pooling exactly.
+        # Motivation: E11 shows over-smoothing accumulates with depth (cos(l0,lL)=0.46
+        # even with noise), so the deeper layers carry a partially-collapsed signal; a
+        # static shallow-favoured pool is a direct anti-over-smoothing measure that
+        # complements (not replaces) the noise augmentation's rank-release. Literature:
+        # APPNP teleport (arXiv:1810.05997) / GCNII initial residual (arXiv:2007.02133)
+        # / SGC layer-collapse analysis.
+        self.agg_weights_str = str(config["agg_weights"]) if "agg_weights" in config else "uniform"
+        self.agg_alpha = float(config["agg_alpha"]) if "agg_alpha" in config else 0.5
+        _aw = None
+        if self.agg_weights_str == "uniform":
+            _aw = None
+        elif self.agg_weights_str == "shallow":
+            _aw = [float(self.n_layers + 1 - k) for k in range(self.n_layers + 1)]
+        elif self.agg_weights_str == "deep":
+            _aw = [float(k + 1) for k in range(self.n_layers + 1)]
+        elif self.agg_weights_str == "geom":
+            _aw = [self.agg_alpha ** k for k in range(self.n_layers + 1)]
+        elif self.agg_weights_str == "first":
+            _aw = [1.0] + [0.0] * self.n_layers
+        elif self.agg_weights_str == "last":
+            _aw = [0.0] * self.n_layers + [1.0]
+        else:
+            _raw = self.agg_weights_str.replace("(", "").replace(")", "").replace(" ", "")
+            _aw = [float(x) for x in _raw.split(",")]
+            assert len(_aw) == self.n_layers + 1, \
+                "agg_weights explicit list must have L+1=%d entries, got %r" % (
+                    self.n_layers + 1, self.agg_weights_str)
+        if _aw is not None:
+            _s = float(sum(_aw))
+            assert _s > 0.0
+            _aw = [x / _s for x in _aw]
+        self._agg_weights_vec = torch.tensor(_aw, dtype=torch.float32) if _aw is not None else None
         # Round-11: NCL-style prototype (cluster) interest injection.
         self.proto_K = int(config["proto_K"]) if "proto_K" in config else 0
         self.proto_lam = float(config["proto_lam"]) if "proto_lam" in config else 0.0
@@ -860,6 +911,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.dropout_rate = self.dropout
         self.lightgcn.dropout = nn.Dropout(self.dropout)
         self.lightgcn.res_alpha = self.res_alpha
+        self.lightgcn.agg_weights = self._agg_weights_vec
         self.lightgcn.gate_mode = self.gate_mode
         if self.gate_mode == 1:
             self.lightgcn.gate_proj = nn.ModuleList(
@@ -897,6 +949,10 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[directau] align=%.3f unif=%.3f t=%.2f k=%d" % (
                 self.directau_align, self.directau_unif, self.directau_t, self.directau_k))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
+        if self.agg_weights_str != "uniform":
+            self.logger.info("[layer-agg] agg_weights=%s alpha=%.3f vec=%s" % (
+                self.agg_weights_str, self.agg_alpha,
+                ",".join("%.3f" % float(x) for x in self._agg_weights_vec.tolist())))
         if self.weight_decay:
             self.logger.info("[weight-decay] wd=%.2e (Adam decoupled; batch-L2 reg=%.2e)" % (
                 self.weight_decay, self.reg))
