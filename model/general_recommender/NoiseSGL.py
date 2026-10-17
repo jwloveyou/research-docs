@@ -78,6 +78,10 @@ class _LightGCN(nn.Module):
         # layer, default/backward-compatible); 1 = XSimGCL (perturb the layer-0 embedding
         # once, then propagate cleanly). Both keep the SAME LightGCN operator (R4/R6).
         self.noise_mode = 0
+        # Round-28: density-aware (degree-scaled) noise magnitude. None = uniform
+        # noise_eps (backward compatible); otherwise a per-node multiplier of the
+        # per-layer noise magnitude (mean-normalised to 1).
+        self.noise_deg_scale = None
         # Round-19: adaptive per-node per-layer gating (AdaGate-style, GRU update-gate
         # analogue). gate = sigmoid(W_k . h_k + b_k) computed from the pre-propagation
         # embedding; h_{k+1} = gate*(A h_k) + (1-gate)*h_k. Adds per-node adaptive
@@ -392,7 +396,8 @@ class _LightGCN(nn.Module):
         # propagates it cleanly; noise_mode=0 (SimGCL, default) perturbs after every layer.
         if perturb and eps > 0 and self.noise_mode == 1:
             random_noise = torch.rand_like(ego_embeddings)
-            ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * eps
+            scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
+            ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
         all_embeddings = [ego_embeddings]
 
         for k in range(self.n_layers):
@@ -413,8 +418,11 @@ class _LightGCN(nn.Module):
                 # SimGCL-style embedding-space perturbation: uniform noise on the unit
                 # sphere, signed by the embedding, scaled by eps. Applied per propagation
                 # layer to inject structural-independent stochasticity (no edge dropping).
+                # Round-28: when noise_deg_scale is set, the magnitude becomes density-
+                # aware (high-degree nodes over-smooth more -> stronger perturbation).
                 random_noise = torch.rand_like(ego_embeddings)
-                ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * eps
+                scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
+                ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
             all_embeddings += [ego_embeddings]
 
         if return_all:
@@ -513,6 +521,14 @@ class NoiseSGL(AbstractRecommender):
         assert self.noise_anneal in (0, 1, 2)
         self.noise_anneal_epochs = int(config["noise_anneal_epochs"]) if "noise_anneal_epochs" in config else 0
         self.noise_eps_floor = float(config["noise_eps_floor"]) if "noise_eps_floor" in config else 0.0
+        # Round-28: density-aware noise strength. noise_deg_gamma=0 keeps uniform
+        # noise_eps (backward compatible). gamma>0 scales the per-node noise magnitude
+        # linearly with degree centrality: scale_i = 1 + gamma*(c_i - mean(c)),
+        # c_i = deg_i / max(deg). High-degree nodes (which aggregate more neighbours
+        # and thus over-smooth more, cf. E11) get stronger perturbation, low-degree
+        # nodes slightly weaker; mean scale stays ~1 so the average noise magnitude
+        # is unchanged. Static, parameter-free (respects the R1/R15/R18 'static wins').
+        self.noise_deg_gamma = float(config["noise_deg_gamma"]) if "noise_deg_gamma" in config else 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style). gate_mode=1 turns
         # on the gated residual in _forward_gcn; gate_init sets the initial sigmoid bias
         # (positive => gate starts near 1, i.e. close to plain LightGCN, avoiding the
@@ -648,6 +664,16 @@ class NoiseSGL(AbstractRecommender):
         self.item_ssl_weights = self.item_ssl_weights / self.item_ssl_weights.mean()
         self.user_ssl_weights = torch.from_numpy(self.user_ssl_weights).float().to(self.device)
         self.item_ssl_weights = torch.from_numpy(self.item_ssl_weights).float().to(self.device)
+        self._noise_deg_scale = None
+        if self.noise_deg_gamma != 0.0:
+            deg = np.concatenate([user_degree, item_degree], axis=0).astype(np.float32)
+            c = deg / (float(deg.max()) + 1e-12)          # degree centrality in [0,1]
+            c_mean = float(c.mean())
+            scale = 1.0 + self.noise_deg_gamma * (c - c_mean)  # mean ~1, max ~1+gamma
+            scale = np.clip(scale, 0.1, 10.0)
+            self._noise_deg_scale = torch.from_numpy(scale).float().to(self.device)
+            self.logger.info("[noise-deg] gamma=%.2f scale[min/mean/max]=%.3f/%.3f/%.3f" % (
+                self.noise_deg_gamma, float(scale.min()), float(scale.mean()), float(scale.max())))
         if self.nt_ssm:
             # Precompute one weight per training positive pair: w = (deg_u+1)^-a * (deg_i+1)^-a,
             # normalised to mean 1 so the overall BPR scale is unchanged. Low-degree (tail)
@@ -683,6 +709,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.view_mix = self.view_mix
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
+        self.lightgcn.noise_deg_scale = self._noise_deg_scale
         self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.dropout_rate = self.dropout
         self.lightgcn.dropout = nn.Dropout(self.dropout)
