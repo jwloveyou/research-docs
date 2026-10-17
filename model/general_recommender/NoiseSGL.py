@@ -572,6 +572,23 @@ class NoiseSGL(AbstractRecommender):
         self.learner = config["learner"]
         self.lr = config['lr']
         self.param_init = config["param_init"]
+        # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
+        # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
+        # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
+        # training budget) and then holds. It is an OPTIMIZER-level schedule, orthogonal
+        # to the SSL-weight schedule (R13/R15, which scales the InfoNCE magnitude) and to
+        # the augmentation/embedding axes. Motivation: R12c/R15/R23 show the BPR
+        # fine-tune phase (after the SSL weight hits floor at ep~30) peaks then overfits
+        # (gowalla embed256 peaks ~ep61 then declines); a decaying lr shrinks the
+        # fine-tune step size to counter that late-stage overfitting. Static, no learnable
+        # parameters (respects the R1/R15/R18 'static wins' law).
+        # Literature: 'Optimal Linear Decay Learning Rate Schedules and Further
+        # Refinements' (arXiv:2310.07831) + cosine schedule (Loshchilov & Hutter 2017).
+        self.lr_anneal = int(config["lr_anneal"]) if "lr_anneal" in config else 0
+        assert self.lr_anneal in (0, 1, 2)
+        self.lr_anneal_epochs = int(config["lr_anneal_epochs"]) if "lr_anneal_epochs" in config else 0
+        self.lr_floor = float(config["lr_floor"]) if "lr_floor" in config else 0.1
+        assert 0.0 < self.lr_floor <= 1.0
 
         # Hyper-parameters for GCN
         self.n_layers = config['n_layers']
@@ -1209,6 +1226,29 @@ class NoiseSGL(AbstractRecommender):
             sched = start
         return sched
 
+    def _lr(self, epoch):
+        """Effective learning rate at a given epoch (Round-37: LR schedule).
+
+        lr_anneal=0 returns the fixed self.lr (backward compatible). Otherwise the
+        optimizer lr is decayed from self.lr to self.lr*self.lr_floor over
+        lr_anneal_epochs epochs (linear or cosine) and then held. This is the
+        optimizer-step-size counterpart of the SSL-weight annealing (R13/R15): the
+        SSL weight controls *what* objective is optimised, the lr controls *how
+        aggressively* it is optimised, so the two schedules are independent.
+        """
+        if not self.lr_anneal or self.epochs <= 1:
+            return self.lr
+        total = float(self.lr_anneal_epochs) if self.lr_anneal_epochs > 0 else float(self.epochs)
+        t = min(max(float(epoch - 1) / max(total - 1.0, 1.0), 0.0), 1.0)
+        floor_lr = self.lr * self.lr_floor
+        if self.lr_anneal == 1:          # linear decay to floor
+            sched = self.lr + (floor_lr - self.lr) * t
+        elif self.lr_anneal == 2:        # cosine decay to floor
+            sched = floor_lr + (self.lr - floor_lr) * 0.5 * (1.0 + math.cos(math.pi * t))
+        else:
+            sched = self.lr
+        return sched
+
     def _ssl_weight(self, epoch):
         """Multiplier on the InfoNCE loss at a given epoch (R13: SSL annealing).
 
@@ -1263,6 +1303,13 @@ class NoiseSGL(AbstractRecommender):
             if cur_temp != self.lightgcn.ssl_temp:
                 self.lightgcn.ssl_temp = cur_temp
                 self.ssl_temp = cur_temp
+            # Round-37: per-epoch LR schedule (optimizer-level). Applied before the batch
+            # loop so every step of this epoch uses the scheduled lr; lr_anneal=0 keeps the
+            # initial self.lr (backward compatible, no-op).
+            if self.lr_anneal:
+                cur_lr = self._lr(epoch)
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = cur_lr
             for bat_users, bat_pos_items, bat_neg_items in data_iter:
                 bat_users = torch.from_numpy(bat_users).long().to(self.device)
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
