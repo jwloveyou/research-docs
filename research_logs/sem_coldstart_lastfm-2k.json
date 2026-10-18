@@ -1,0 +1,41 @@
+{
+  "dataset": "lastfm-2k",
+  "n_items": 1507,
+  "embed_size": 256,
+  "n_interactions": 49900,
+  "k": 32,
+  "buckets": [
+    {
+      "bucket": 0,
+      "n_items": 503,
+      "deg_min": 4,
+      "deg_max": 12,
+      "deg_mean": 9.23061630218688,
+      "sem_eff_rank": 223.569,
+      "sem_mean_pairwise_cos": 0.02865,
+      "sem_collab_jaccard": 0.02741
+    },
+    {
+      "bucket": 1,
+      "n_items": 502,
+      "deg_min": 12,
+      "deg_max": 26,
+      "deg_mean": 17.133466135458168,
+      "sem_eff_rank": 223.319,
+      "sem_mean_pairwise_cos": 0.0367,
+      "sem_collab_jaccard": 0.02768
+    },
+    {
+      "bucket": 2,
+      "n_items": 502,
+      "deg_min": 26,
+      "deg_max": 495,
+      "deg_mean": 73.0199203187251,
+      "sem_eff_rank": 225.943,
+      "sem_mean_pairwise_cos": 0.05893,
+      "sem_collab_jaccard": 0.02704
+    }
+  ],
+  "full_eff_rank": 238.301,
+  "full_mean_pairwise_cos": 0.0389
+}
