@@ -1,0 +1,156 @@
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-18 17:10:53.877: my pid: 901777
+2026-10-18 17:10:53.878: model: model.general_recommender.NoiseSGL
+2026-10-18 17:10:53.878: Dataset statistics:
+Name: yelp2018
+The number of users: 31668
+The number of items: 38048
+The number of ratings: 1561406
+Average actions of users: 49.31
+Average actions of items: 41.04
+The sparsity of the dataset: 99.870412%
+
+The number of training: 1237259
+The number of validation: 0
+The number of testing: 324147
+2026-10-18 17:10:53.878: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=yelp2018
+file_column=UI
+sep=','
+gpu_id=6
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=256
+n_layers=3
+ssl_reg=0
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=0
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+noise_item_boost=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=100
+batch_size=1024
+num_negatives=1
+bpr_margin=0.0
+sem_emb=0
+sem_lam=1.0
+l2_norm=0
+dropout=0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=1000
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=yelp2018
+seed=42
+epochs=100
+verbose=1
+stop_cnt=1000
+embed_size=256
+use_mlc=0
+noise_eps=0.2
+ssl_anneal=0
+ssl_anneal_epochs=0
+ssl_anneal_floor=0.0
+l2_norm=0
+dropout=0
+noise_deg_gamma=0.0
+gpu_id=6
+view_mix=nn
+ssl_reg=0
+create_adj_mat function cost: 0.133703s
+2026-10-18 17:10:56.811: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-18 17:10:57.270: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-18 17:12:38.407: [iter 1 : loss : 0.1985 = 0.1979 + 0.0000 + 0.0006, time: 101.135490]
+2026-10-18 17:12:40.686: epoch 1:	0.01598052  	0.03396595  	0.02807158  
+2026-10-18 17:12:40.686: Find a better model.
+2026-10-18 17:14:20.937: [iter 2 : loss : 0.1367 = 0.1359 + -0.0000 + 0.0008, time: 100.190317]
+2026-10-18 17:14:22.443: epoch 2:	0.01686456  	0.03634613  	0.02980873  
+2026-10-18 17:14:22.443: Find a better model.
+2026-10-18 17:16:02.692: [iter 3 : loss : 0.1209 = 0.1199 + -0.0000 + 0.0010, time: 100.188018]
+2026-10-18 17:16:04.930: epoch 3:	0.01795382  	0.03873726  	0.03174105  
+2026-10-18 17:16:04.930: Find a better model.
+2026-10-18 17:17:45.095: [iter 4 : loss : 0.1089 = 0.1078 + -0.0000 + 0.0012, time: 100.102810]
+2026-10-18 17:17:46.727: epoch 4:	0.01858527  	0.04002151  	0.03272820  
+2026-10-18 17:17:46.727: Find a better model.
+2026-10-18 17:19:27.011: [iter 5 : loss : 0.1012 = 0.0999 + 0.0000 + 0.0013, time: 100.236525]
+2026-10-18 17:19:28.465: epoch 5:	0.01899888  	0.04104117  	0.03350984  
+2026-10-18 17:19:28.465: Find a better model.
