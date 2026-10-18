@@ -23,6 +23,7 @@ from util.pytorch import get_initializer
 from util.common import Reduction
 from data import PointwiseSamplerV2, PairwiseSamplerV2
 import numpy as np
+import os
 import math
 from time import time
 from reckit import timer
@@ -42,6 +43,18 @@ class _LightGCN(nn.Module):
         self.n_layers = n_layers
         self.user_embeddings = nn.Embedding(self.num_users, self.embed_dim)
         self.item_embeddings = nn.Embedding(self.num_items, self.embed_dim)
+        # Round-47: FROZEN LLM semantic item features (task #6, 4th/5th-component
+        # semantic axis). item_sem is a plain (non-Parameter) tensor [num_items, embed_dim]
+        # built by util/build_semantic_features.py (TF-IDF tag vector -> frozen seeded
+        # Gaussian projection -> row L2-normalised). When sem_lam!=0 it is added to the
+        # layer-0 item embedding inside _forward_gcn, BEFORE the shared GCN operator and
+        # before any SSL noise, so the semantic prior flows identically through the main
+        # branch and both noise views (respects R4/R6/R7). Static & parameter-free (the
+        # projection is frozen, no projector training) -- the *static* counterpart of
+        # LLMRec's learnable feature projector, chosen to respect this repo's
+        # R1/R15/R18 'static wins' law. Default None/0.0 = off (backward compatible).
+        self.item_sem = None
+        self.sem_lam = 0.0
         # Round-25: main-branch embedding (input/node) dropout as an overfitting
         # regulariser for the BPR fine-tune phase. Standard GNN regularisation
         # (Srivastava et al. 2014; NGCF message-dropout; SGL node-dropout aug_type=nd)
@@ -944,6 +957,17 @@ class _LightGCN(nn.Module):
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        if self.item_sem is not None and self.sem_lam != 0.0:
+            # Round-47: inject the FROZEN LLM semantic prior into the layer-0 item
+            # embedding (users get no semantic offset). item_sem is non-Parameter and
+            # moved to the embedding device on load, so it never receives gradients and
+            # never enters the optimizer. Applied before dropout/SSL-noise/propagation so
+            # main branch and noise views share the identical operator (R4/R6/R7).
+            sem = self.item_sem.to(ego_embeddings.device)
+            ego_embeddings = torch.cat([
+                ego_embeddings[:self.num_users],
+                ego_embeddings[self.num_users:] + self.sem_lam * sem,
+            ], dim=0)
         if apply_dropout and self.dropout_rate > 0:
             # Round-25: input/node dropout on the MAIN branch only (BPR overfitting
             # regulariser). The contrastive noise views never pass apply_dropout=True, so
@@ -1220,6 +1244,17 @@ class NoiseSGL(AbstractRecommender):
         # than adding an auxiliary loss (unlike R8/R9/R21/R35).
         self.bpr_margin = float(config["bpr_margin"]) if "bpr_margin" in config else 0.0
         assert self.bpr_margin >= 0.0
+        # Round-47: FROZEN LLM semantic item feature injection (task #6, 4th/5th-
+        # component semantic axis). sem_emb=1 loads dataset/<ds>/item_sem.npy (built by
+        # util/build_semantic_features.py) and adds sem_lam * item_sem to the layer-0
+        # item embedding (static, parameter-free; orthogonal to noise/SSL-anneal/capacity
+        # and to every structural/optimizer candidate). sem_emb=0 = off (backward
+        # compatible). sem_lam controls the prior strength (1.0 = unit-norm semantic
+        # vector added at full strength). Literature: LLMRec arXiv:2311.00423 (LLM item-
+        # attribute enhancement) / TIGER arXiv:2305.14395 (title semantics for cold-start).
+        self.sem_emb = int(config["sem_emb"]) if "sem_emb" in config else 0
+        assert self.sem_emb in (0, 1)
+        self.sem_lam = float(config["sem_lam"]) if "sem_lam" in config else 1.0
         # Round-3: SimGCF frequency signal scaler (arXiv:2512.15744)
         self.freq_scaler = int(config["freq_scaler"]) if "freq_scaler" in config else 0
         self.freq_type = config["freq_type"] if "freq_type" in config else "low"
@@ -1477,6 +1512,29 @@ class NoiseSGL(AbstractRecommender):
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
+        if self.sem_emb:
+            # Round-47: load the frozen semantic item features and attach them to the
+            # _LightGCN module as a plain (non-Parameter) tensor. Must be created on
+            # self.device (like the HCCF/DCCF parameters, a tensor assigned after .to()
+            # does not move automatically). Loaded via torch.load-style numpy so it works
+            # on both python 3.8 (scnumath) and 3.9 (masmath).
+            sem_path = os.path.join(self.config.data_dir, self.dataset_name, "item_sem.npy")
+            if os.path.exists(sem_path):
+                item_sem = np.load(sem_path)
+                assert item_sem.shape[0] == self.num_items, (
+                    "item_sem.npy has %d rows but dataset has %d items"
+                    % (item_sem.shape[0], self.num_items))
+                assert item_sem.shape[1] == self.emb_size, (
+                    "item_sem.npy has %d dims but embed_size=%d"
+                    % (item_sem.shape[1], self.emb_size))
+                self.lightgcn.item_sem = torch.from_numpy(
+                    item_sem.astype(np.float32)).to(self.device)
+                self.lightgcn.sem_lam = self.sem_lam
+                self.logger.info("[sem] loaded item_sem %s -> shape=%s lam=%.2f" % (
+                    sem_path, item_sem.shape, self.sem_lam))
+            else:
+                self.logger.warning("[sem] sem_emb=1 but %s missing; run "
+                                    "util/build_semantic_features.py first" % sem_path)
         if self.use_gl:
             self.lightgcn.gl_U = torch.from_numpy(self.gl_U).float().to(self.device)
             self.lightgcn.gl_S = torch.from_numpy(self.gl_S).float().to(self.device)
