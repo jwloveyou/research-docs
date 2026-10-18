@@ -1,0 +1,71 @@
+[
+  {
+    "dataset": "gowalla",
+    "density": 0.00084,
+    "eff_rank_noise": 124.21475219726562,
+    "eff_rank_lgn": 53.113807678222656,
+    "eff_rank_ratio": 2.3386527463779494,
+    "smooth_noise": 0.0030351115856319666,
+    "smooth_lgn": 0.03315587341785431,
+    "smooth_ratio": 0.09154069167116469,
+    "cos_noise": 0.462433397769928,
+    "cos_lgn": 0.7007468342781067,
+    "normu_noise": 3.763596773147583,
+    "normu_lgn": 3.0174310207366943,
+    "normu_delta_pct": 24.72851068617685,
+    "normi_noise": 3.164548397064209,
+    "normi_lgn": 2.584775447845459,
+    "normi_delta_pct": 22.43030239636561,
+    "perf": {
+      "fusion": 0.188,
+      "lgn": 0.1861,
+      "delta_pct": 1.0
+    }
+  },
+  {
+    "dataset": "lastfm-2k",
+    "density": 0.023,
+    "eff_rank_noise": 95.5401840209961,
+    "eff_rank_lgn": 33.58802795410156,
+    "eff_rank_ratio": 2.844471373894082,
+    "smooth_noise": 0.11665701121091843,
+    "smooth_lgn": 0.20248271524906158,
+    "smooth_ratio": 0.5761331828616867,
+    "cos_noise": 0.7257304787635803,
+    "cos_lgn": 0.8970848917961121,
+    "normu_noise": 2.27457857131958,
+    "normu_lgn": 2.1840407848358154,
+    "normu_delta_pct": 4.145425630894104,
+    "normi_noise": 2.3810482025146484,
+    "normi_lgn": 2.316744804382324,
+    "normi_delta_pct": 2.775592633711264,
+    "perf": {
+      "fusion": 0.4164,
+      "lgn": 0.3977,
+      "delta_pct": 4.1
+    }
+  },
+  {
+    "dataset": "ml-1m",
+    "density": 0.0507,
+    "eff_rank_noise": 119.23649597167969,
+    "eff_rank_lgn": 64.38190460205078,
+    "eff_rank_ratio": 1.8520187731116238,
+    "smooth_noise": 0.05178873613476753,
+    "smooth_lgn": 0.250380277633667,
+    "smooth_ratio": 0.20684031755304613,
+    "cos_noise": 0.29716256260871887,
+    "cos_lgn": 0.5656884908676147,
+    "normu_noise": 3.3791675567626953,
+    "normu_lgn": 2.516035795211792,
+    "normu_delta_pct": 34.30522583158431,
+    "normi_noise": 3.625915050506592,
+    "normi_lgn": 2.954845666885376,
+    "normi_delta_pct": 22.710809946584188,
+    "perf": {
+      "fusion": 0.2535,
+      "lgn": 0.2621,
+      "delta_pct": -3.3
+    }
+  }
+]
