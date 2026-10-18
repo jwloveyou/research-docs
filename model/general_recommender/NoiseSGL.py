@@ -710,6 +710,16 @@ class NoiseSGL(AbstractRecommender):
         # "static wins" law). Default 1 = backward compatible.
         self.num_negatives = int(config["num_negatives"]) if "num_negatives" in config else 1
         assert self.num_negatives >= 1
+        # Round-41: BPR ranking margin (4th-component candidate #15). bpr_margin=0 keeps
+        # the plain BPR (backward compatible). margin>0 subtracts gamma from the BPR
+        # logits: loss = -log sigmoid(pos - neg - gamma), which requires a STRONGER
+        # separation between the positive and the negative item and sharpens the ranking
+        # signal in the BPR fine-tune phase (post SSL-anneal). Static, parameter-free,
+        # orthogonal to the three fusion components (noise / SSL-anneal / capacity) and
+        # to every previously queued candidate: it modifies the BPR margin directly rather
+        # than adding an auxiliary loss (unlike R8/R9/R21/R35).
+        self.bpr_margin = float(config["bpr_margin"]) if "bpr_margin" in config else 0.0
+        assert self.bpr_margin >= 0.0
         # Round-3: SimGCF frequency signal scaler (arXiv:2512.15744)
         self.freq_scaler = int(config["freq_scaler"]) if "freq_scaler" in config else 0
         self.freq_type = config["freq_type"] if "freq_type" in config else "low"
@@ -1410,6 +1420,11 @@ class NoiseSGL(AbstractRecommender):
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
                 sup_logits, infonce_loss, fcl_loss, dau_loss, spec_loss = self.lightgcn(
                     sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=cur_eps)
+                # Round-41: BPR ranking margin. Applies to both the [B] and [B,K] logit
+                # shapes (multi-negative R21), and ONLY to the BPR term (InfoNCE keeps its
+                # own temperature). margin=0 is a no-op (backward compatible).
+                if self.bpr_margin > 0.0:
+                    sup_logits = sup_logits - self.bpr_margin
                 
                 # BPR Loss (Round-5: type-aware per-pair reweighting when nt_ssm=1)
                 if self.nt_ssm_w is not None:
