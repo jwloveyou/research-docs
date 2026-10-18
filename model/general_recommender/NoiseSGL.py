@@ -360,6 +360,31 @@ class _LightGCN(nn.Module):
         self.dgcf_t = None           # [2E] edge target indices (long, on device)
         self.dgcf_indices = None     # [2, 2E] stacked edge indices
         self.dgcf_vals = None        # [2E] normalised adjacency edge weights
+        # NCL baseline (WWW'22, arXiv:2202.06200). ncl=False keeps the NoiseSGL
+        # backbone (backward compatible); ncl=True switches to the faithful NCL
+        # architecture for the classic-baseline same-protocol comparison (task #10):
+        # a clean LightGCN backbone (NO noise augmentation) plus TWO neighbourhood-
+        # enriched contrastive objectives -- (1) structural contrast between the layer-0
+        # ("center") embedding and the layer-2*hyper_layers ("context", even-layer) GNN
+        # output, InfoNCE over the FULL node set (paper eq. 6); (2) prototypical
+        # contrast between each node and its k-means cluster centroid (prototype),
+        # InfoNCE over the K prototypes (paper eq. 10-11), with k-means re-run every
+        # m_step epochs (EM E-step) and the prototype loss activated only after
+        # warm_up epochs (official warm_up_step). Unlike R11 (which only *injected*
+        # prototypes into the representation, no contrast), this is the full NCL with
+        # both contrastive losses, so it is the faithful classic baseline. As a
+        # *prototype-clustering* model it is a structural/global-signal baseline and a
+        # counterfactual to our static noise+anneal+capacity fusion (R7/R11/R17 showed
+        # global/cluster signals are harmful to our backbone; NCL is the external
+        # reference that does it as its own method).
+        self.ncl = False
+        self.ncl_temp = 0.1          # InfoNCE temperature (official ssl_temp)
+        self.ncl_hyper_layers = 1    # context = layer 2*hyper_layers (official hyper_layers)
+        self.ncl_alpha = 1.0         # item-side weight (official alpha)
+        self.ncl_user_centroids = None    # [K, d] normalised user prototypes
+        self.ncl_item_centroids = None    # [K, d] normalised item prototypes
+        self.ncl_user_2cluster = None     # [num_users] long assignment
+        self.ncl_item_2cluster = None     # [num_items] long assignment
 
         # # weight initialization
         # self.reset_parameters()
@@ -438,6 +463,24 @@ class _LightGCN(nn.Module):
             sup_logits = sup_pos_ratings - sup_neg_ratings
             ind = self._dgcf_independence(users, items, factors)
             return sup_logits, ind, None, None, None
+
+        if self.ncl:
+            # NCL baseline (task #10): clean LightGCN backbone + structural InfoNCE
+            # (layer-0 vs layer-2h) + prototypical InfoNCE (node vs k-means centroid).
+            # NO noise augmentation; the 2nd/3rd return slots carry the structural and
+            # prototypical contrastive losses (ssl_reg/proto_reg are applied in
+            # train_model, matching the framework's ssl_reg convention).
+            user_embeddings, item_embeddings, embeddings_list = self._forward_ncl()
+            user_embs = F.embedding(users, user_embeddings)
+            item_embs = F.embedding(items, item_embeddings)
+            neg_item_embs = F.embedding(neg_items, item_embeddings)
+            sup_pos_ratings = inner_product(user_embs, item_embs)
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)
+            sup_logits = sup_pos_ratings - sup_neg_ratings
+            ssl_loss = self._ncl_ssl_loss(
+                embeddings_list[0], embeddings_list[2 * self.ncl_hyper_layers], users, items)
+            proto_loss = self._ncl_proto_loss(embeddings_list[0], users, items)
+            return sup_logits, ssl_loss, proto_loss, None, None
 
         user_embeddings, item_embeddings = self._forward_gcn(
             main_adj if main_adj is not None else self.norm_adj,
@@ -1182,6 +1225,92 @@ class _LightGCN(nn.Module):
                 npairs += 1
         return loss / float(npairs)
 
+    def _forward_ncl(self):
+        """NCL clean LightGCN backbone (paper Section 3.1): propagates the layer-0
+        embedding max(n_layers, 2*hyper_layers) times and returns (final mean-pooled
+        user/item embeddings, embeddings_list of every layer output). The extra layers
+        (beyond n_layers) are only used to build the even-layer "context" embedding for
+        the structural contrast; the ranking embedding only mean-pools the first
+        n_layers+1 layer outputs (identical to LightGCN with n_layers)."""
+        ego_embeddings = torch.cat(
+            [self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        embeddings_list = [ego_embeddings]
+        for _ in range(max(self.n_layers, self.ncl_hyper_layers * 2)):
+            ego_embeddings = torch_sp.mm(self.norm_adj, ego_embeddings)
+            embeddings_list.append(ego_embeddings)
+        lightgcn_all = torch.stack(embeddings_list[:self.n_layers + 1], dim=1).mean(dim=1)
+        user_all, item_all = torch.split(
+            lightgcn_all, [self.num_users, self.num_items], dim=0)
+        return user_all, item_all, embeddings_list
+
+    def _ncl_ssl_loss(self, current_embedding, previous_embedding, user, item):
+        """NCL structure-contrastive loss (paper eq. 6 / official ssl_layer_loss):
+        InfoNCE between the context (even-layer GNN output) and the center (layer-0)
+        embedding, with the FULL user/item sets as negatives (normalised dot products).
+        The item side is weighted by ncl_alpha (official alpha). ssl_reg is NOT applied
+        here (train_model scales it, matching the framework's ssl_reg convention)."""
+        cur_u, cur_i = torch.split(
+            current_embedding, [self.num_users, self.num_items], dim=0)
+        prev_u_all, prev_i_all = torch.split(
+            previous_embedding, [self.num_users, self.num_items], dim=0)
+
+        cur_u = cur_u[user]
+        prev_u = prev_u_all[user]
+        norm_cur_u = F.normalize(cur_u)
+        norm_prev_u = F.normalize(prev_u)
+        norm_all_prev_u = F.normalize(prev_u_all)
+        pos_u = torch.mul(norm_cur_u, norm_prev_u).sum(dim=1)
+        ttl_u = torch.matmul(norm_cur_u, norm_all_prev_u.transpose(0, 1))
+        pos_u = torch.exp(pos_u / self.ncl_temp)
+        ttl_u = torch.exp(ttl_u / self.ncl_temp).sum(dim=1)
+        ssl_loss_user = -torch.log(pos_u / ttl_u).sum()
+
+        cur_i = cur_i[item]
+        prev_i = prev_i_all[item]
+        norm_cur_i = F.normalize(cur_i)
+        norm_prev_i = F.normalize(prev_i)
+        norm_all_prev_i = F.normalize(prev_i_all)
+        pos_i = torch.mul(norm_cur_i, norm_prev_i).sum(dim=1)
+        ttl_i = torch.matmul(norm_cur_i, norm_all_prev_i.transpose(0, 1))
+        pos_i = torch.exp(pos_i / self.ncl_temp)
+        ttl_i = torch.exp(ttl_i / self.ncl_temp).sum(dim=1)
+        ssl_loss_item = -torch.log(pos_i / ttl_i).sum()
+
+        return ssl_loss_user + self.ncl_alpha * ssl_loss_item
+
+    def _ncl_proto_loss(self, node_embedding, user, item):
+        """NCL prototypical-contrastive loss (paper eq. 10-11 / official ProtoNCE_loss):
+        InfoNCE between each node embedding (layer-0, normalised) and its assigned
+        k-means centroid (normalised), with the K centroids as negatives. proto_reg is
+        NOT applied here (train_model scales it). Requires _ncl_e_step to have populated
+        ncl_user/item_centroids and ncl_user/item_2cluster."""
+        if self.ncl_user_centroids is None or self.ncl_item_centroids is None:
+            return 0.0
+        u_all, i_all = torch.split(
+            node_embedding, [self.num_users, self.num_items], dim=0)
+
+        u = u_all[user]
+        norm_u = F.normalize(u)
+        u2c = self.ncl_user_2cluster[user]
+        u2centroids = self.ncl_user_centroids[u2c]
+        pos_u = torch.mul(norm_u, u2centroids).sum(dim=1)
+        pos_u = torch.exp(pos_u / self.ncl_temp)
+        ttl_u = torch.matmul(norm_u, self.ncl_user_centroids.transpose(0, 1))
+        ttl_u = torch.exp(ttl_u / self.ncl_temp).sum(dim=1)
+        proto_loss_user = -torch.log(pos_u / ttl_u).sum()
+
+        i = i_all[item]
+        norm_i = F.normalize(i)
+        i2c = self.ncl_item_2cluster[item]
+        i2centroids = self.ncl_item_centroids[i2c]
+        pos_i = torch.mul(norm_i, i2centroids).sum(dim=1)
+        pos_i = torch.exp(pos_i / self.ncl_temp)
+        ttl_i = torch.matmul(norm_i, self.ncl_item_centroids.transpose(0, 1))
+        ttl_i = torch.exp(ttl_i / self.ncl_temp).sum(dim=1)
+        proto_loss_item = -torch.log(pos_i / ttl_i).sum()
+
+        return proto_loss_user + proto_loss_item
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -1755,6 +1884,32 @@ class NoiseSGL(AbstractRecommender):
             "embed_size must be divisible by dgcf_n_factors")
         self.dgcf_temp = float(config["dgcf_temp"]) if "dgcf_temp" in config else 1.0
         self.dgcf_ind_reg = float(config["dgcf_ind_reg"]) if "dgcf_ind_reg" in config else 1e-2
+        # NCL baseline (task #10, classic baseline, WWW'22 arXiv:2202.06200).
+        # ncl=1 switches the whole forward/eval/train to the faithful NCL architecture:
+        # a clean LightGCN backbone (NO noise augmentation) plus a structure-contrastive
+        # InfoNCE (layer-0 center vs layer-2*hyper_layers context, paper eq. 6) and a
+        # prototypical-contrastive InfoNCE (node vs its k-means centroid, paper eq. 10-11),
+        # with an EM k-means E-step every ncl_m_step epochs and a prototype-loss warm-up
+        # (ncl_warm_up, official warm_up_step). These REPLACE our fusion components
+        # (noise / SSL anneal / semantic), which do not apply to NCL. Defaults follow the
+        # official NCL.yaml (ssl_temp=0.1, ssl_reg=1e-7, alpha=1, proto_reg=8e-8,
+        # num_clusters=1000, hyper_layers=1, warm_up_step=20, m_step=1).
+        self.ncl = int(config["ncl"]) if "ncl" in config else 0
+        assert self.ncl in (0, 1)
+        self.ncl_ssl_reg = float(config["ncl_ssl_reg"]) if "ncl_ssl_reg" in config else 1e-7
+        self.ncl_proto_reg = float(config["ncl_proto_reg"]) if "ncl_proto_reg" in config else 8e-8
+        self.ncl_temp = float(config["ncl_temp"]) if "ncl_temp" in config else 0.1
+        self.ncl_hyper_layers = int(config["ncl_hyper_layers"]) if "ncl_hyper_layers" in config else 1
+        assert self.ncl_hyper_layers >= 1
+        self.ncl_alpha = float(config["ncl_alpha"]) if "ncl_alpha" in config else 1.0
+        self.ncl_num_clusters = int(config["ncl_num_clusters"]) if "ncl_num_clusters" in config else 1000
+        assert self.ncl_num_clusters >= 1
+        self.ncl_m_step = int(config["ncl_m_step"]) if "ncl_m_step" in config else 1
+        assert self.ncl_m_step >= 1
+        self.ncl_warm_up = int(config["ncl_warm_up"]) if "ncl_warm_up" in config else 20
+        assert self.ncl_warm_up >= 0
+        self.ncl_kmeans_iters = int(config["ncl_kmeans_iters"]) if "ncl_kmeans_iters" in config else 10
+        self.ncl_kmeans_seed = int(config["ncl_kmeans_seed"]) if "ncl_kmeans_seed" in config else 0
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -2060,6 +2215,15 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[dgcf] n_factors=%d temp=%.2f ind_reg=%.1e dk=%d edges=%d" % (
                 self.dgcf_n_factors, self.dgcf_temp, self.dgcf_ind_reg, dk,
                 int(self.lightgcn.dgcf_h.shape[0])))
+        self.lightgcn.ncl = bool(self.ncl)
+        self.lightgcn.ncl_temp = self.ncl_temp
+        self.lightgcn.ncl_hyper_layers = self.ncl_hyper_layers
+        self.lightgcn.ncl_alpha = self.ncl_alpha
+        if self.ncl:
+            self.logger.info("[ncl] ssl_reg=%.1e proto_reg=%.1e temp=%.2f hyper_layers=%d alpha=%.2f num_clusters=%d warm_up=%d m_step=%d kmeans_iters=%d" % (
+                self.ncl_ssl_reg, self.ncl_proto_reg, self.ncl_temp,
+                self.ncl_hyper_layers, self.ncl_alpha, self.ncl_num_clusters,
+                self.ncl_warm_up, self.ncl_m_step, self.ncl_kmeans_iters))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -2410,6 +2574,31 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.proto_assign_i = assign[self.num_users:]
         self.logger.info("[proto] re-cluster K=%d time=%.1fs" % (K, time() - t0))
 
+    def _ncl_e_step(self):
+        """NCL EM E-step (official e_step): k-means over the layer-0 user and item
+        embedding weights SEPARATELY, producing K normalised user/item centroids and the
+        hard cluster assignment for every node. Runs on CPU via scipy kmeans2 (minit=
+        'points', deterministic seed), matching the R11 clustering machinery; faiss is
+        not available in this env so scipy is the drop-in (both are k-means). The
+        centroids are L2-normalised like the official run_kmeans (F.normalize)."""
+        from scipy.cluster.vq import kmeans2
+        with torch.no_grad():
+            u = self.lightgcn.user_embeddings.weight.detach().cpu().numpy().astype(np.float64)
+            i = self.lightgcn.item_embeddings.weight.detach().cpu().numpy().astype(np.float64)
+        Ku = int(min(self.ncl_num_clusters, self.num_users - 1))
+        Ki = int(min(self.ncl_num_clusters, self.num_items - 1))
+        t0 = time()
+        uc, ul = kmeans2(u, Ku, iter=self.ncl_kmeans_iters, minit="points", seed=self.ncl_kmeans_seed)
+        ic, il = kmeans2(i, Ki, iter=self.ncl_kmeans_iters, minit="points", seed=self.ncl_kmeans_seed)
+        uc = torch.from_numpy(uc.astype(np.float32)).to(self.device)
+        ic = torch.from_numpy(ic.astype(np.float32)).to(self.device)
+        self.lightgcn.ncl_user_centroids = F.normalize(uc, dim=1)
+        self.lightgcn.ncl_item_centroids = F.normalize(ic, dim=1)
+        self.lightgcn.ncl_user_2cluster = torch.from_numpy(ul.astype(np.int64)).to(self.device)
+        self.lightgcn.ncl_item_2cluster = torch.from_numpy(il.astype(np.int64)).to(self.device)
+        self.logger.info("[ncl] E-step k-means Ku=%d Ki=%d time=%.1fs" % (
+            Ku, Ki, time() - t0))
+
     def _ssl_temp(self, epoch):
         """Effective InfoNCE temperature at a given epoch (Round-30: temperature schedule).
 
@@ -2739,6 +2928,8 @@ class NoiseSGL(AbstractRecommender):
                 continue
             if self.proto_K > 0 and ((epoch - 1) % self.proto_interval == 0):
                 self._cluster_prototypes()
+            if self.ncl and ((epoch - 1) % self.ncl_m_step == 0):
+                self._ncl_e_step()
             total_loss, total_bpr_loss, total_reg_loss = 0.0, 0.0, 0.0
             training_start_time = time()
             # NoiseSGL: noise views need no sub-graph; Round-6 ED views need a freshly
@@ -2809,8 +3000,8 @@ class NoiseSGL(AbstractRecommender):
                     bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
                 else:
                     bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
-                if self.hccf or self.dccf or self.ngcf or self.dgcf:
-                    # HCCF/DCCF/NGCF/DGCF official use a MEAN-scaled BPR (batch mean),
+                if self.hccf or self.dccf or self.ngcf or self.dgcf or self.ncl:
+                    # HCCF/DCCF/NGCF/DGCF/NCL official use a MEAN-scaled BPR (batch mean),
                     # matching their mean-scaled losses so the official SSL:BPR / BPR-only
                     # ratios hold.
                     bpr_loss = -torch.mean(F.logsigmoid(sup_logits))
@@ -2825,7 +3016,7 @@ class NoiseSGL(AbstractRecommender):
                 # InfoNCE Loss is computed inside forward() so that >=2 views can be
                 # mixed; for view_mix="nn" it is identical to the original single pair.
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
-                if self.use_mlc and not self.hccf and not self.dccf and not self.ngcf:
+                if self.use_mlc and not self.hccf and not self.dccf and not self.ngcf and not self.ncl:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
                                                             perturb=True, eps=cur_eps)
                     layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
@@ -2890,6 +3081,19 @@ class NoiseSGL(AbstractRecommender):
                     # (paper eq. 10-13; the intent prototypes are not L2-regularised). The
                     # 2nd forward return slot (infonce_loss) carries the independence loss.
                     loss = bpr_loss + self.dgcf_ind_reg * infonce_loss + self.reg * reg_loss
+                elif self.ncl:
+                    # NCL faithful loss: mean-BPR + ssl_reg*structural InfoNCE +
+                    # proto_reg*prototypical InfoNCE + reg*L2 (paper eq. 13). The
+                    # prototypical loss is switched OFF for the first ncl_warm_up epochs
+                    # (official warm_up_step=20). The 2nd/3rd forward return slots carry
+                    # the structural and prototypical losses respectively (so the 3rd
+                    # slot, bound to fcl_loss here, is the NCL prototypical loss). No
+                    # noise anneal / fcl / dau / spec (our fusion components, not NCL's).
+                    if epoch < self.ncl_warm_up:
+                        loss = bpr_loss + self.ncl_ssl_reg * infonce_loss + self.reg * reg_loss
+                    else:
+                        loss = bpr_loss + self.ncl_ssl_reg * infonce_loss \
+                            + self.ncl_proto_reg * fcl_loss + self.reg * reg_loss
                 else:
                     ssl_weight = self._ssl_weight(epoch)
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
