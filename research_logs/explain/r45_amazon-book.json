@@ -1,0 +1,96 @@
+{
+  "metrics": {
+    "dataset": "amazon-book",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 0.948,
+    "top1_jaccard_mean": 0.078647,
+    "top3_jaccard_mean": 0.170014,
+    "conciseness_top1_ratio": 0.4907
+  },
+  "examples": [
+    {
+      "user": 2372,
+      "item": 33722,
+      "sources": [
+        {
+          "item": 6192,
+          "common_users": 8,
+          "jaccard": 0.068966
+        },
+        {
+          "item": 34592,
+          "common_users": 2,
+          "jaccard": 0.024691
+        },
+        {
+          "item": 22228,
+          "common_users": 3,
+          "jaccard": 0.023077
+        }
+      ]
+    },
+    {
+      "user": 7051,
+      "item": 22311,
+      "sources": [
+        {
+          "item": 7502,
+          "common_users": 1,
+          "jaccard": 0.013158
+        },
+        {
+          "item": 5466,
+          "common_users": 1,
+          "jaccard": 0.011111
+        },
+        {
+          "item": 5315,
+          "common_users": 1,
+          "jaccard": 0.009434
+        }
+      ]
+    },
+    {
+      "user": 15544,
+      "item": 60245,
+      "sources": [
+        {
+          "item": 57802,
+          "common_users": 2,
+          "jaccard": 0.042553
+        },
+        {
+          "item": 25979,
+          "common_users": 3,
+          "jaccard": 0.036145
+        },
+        {
+          "item": 53411,
+          "common_users": 2,
+          "jaccard": 0.031746
+        }
+      ]
+    },
+    {
+      "user": 18373,
+      "item": 83582,
+      "sources": [
+        {
+          "item": 69582,
+          "common_users": 1,
+          "jaccard": 0.043478
+        },
+        {
+          "item": 62853,
+          "common_users": 1,
+          "jaccard": 0.018182
+        },
+        {
+          "item": 20801,
+          "common_users": 1,
+          "jaccard": 0.017857
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "metrics": {
+    "dataset": "douban-book",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 0.993,
+    "top1_jaccard_mean": 0.135859,
+    "top3_jaccard_mean": 0.313981,
+    "conciseness_top1_ratio": 0.4482
+  },
+  "examples": [
+    {
+      "user": 71,
+      "item": 2249,
+      "sources": [
+        {
+          "item": 1873,
+          "common_users": 9,
+          "jaccard": 0.089109
+        },
+        {
+          "item": 630,
+          "common_users": 15,
+          "jaccard": 0.086705
+        },
+        {
+          "item": 2047,
+          "common_users": 8,
+          "jaccard": 0.085106
+        }
+      ]
+    },
+    {
+      "user": 11612,
+      "item": 235,
+      "sources": [
+        {
+          "item": 705,
+          "common_users": 58,
+          "jaccard": 0.211679
+        },
+        {
+          "item": 753,
+          "common_users": 43,
+          "jaccard": 0.162879
+        },
+        {
+          "item": 1289,
+          "common_users": 37,
+          "jaccard": 0.146825
+        }
+      ]
+    },
+    {
+      "user": 3392,
+      "item": 7315,
+      "sources": [
+        {
+          "item": 6968,
+          "common_users": 2,
+          "jaccard": 0.117647
+        },
+        {
+          "item": 17469,
+          "common_users": 1,
+          "jaccard": 0.076923
+        },
+        {
+          "item": 2139,
+          "common_users": 3,
+          "jaccard": 0.06383
+        }
+      ]
+    }
+  ]
+}

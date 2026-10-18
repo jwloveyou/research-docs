@@ -1,0 +1,75 @@
+{
+  "metrics": {
+    "dataset": "lastfm-2k",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 0.9995,
+    "top1_jaccard_mean": 0.163933,
+    "top3_jaccard_mean": 0.414111,
+    "conciseness_top1_ratio": 0.4104
+  },
+  "examples": [
+    {
+      "user": 474,
+      "item": 189,
+      "sources": [
+        {
+          "item": 275,
+          "common_users": 39,
+          "jaccard": 0.168831
+        },
+        {
+          "item": 499,
+          "common_users": 23,
+          "jaccard": 0.135294
+        },
+        {
+          "item": 187,
+          "common_users": 25,
+          "jaccard": 0.126904
+        }
+      ]
+    },
+    {
+      "user": 1169,
+      "item": 354,
+      "sources": [
+        {
+          "item": 251,
+          "common_users": 2,
+          "jaccard": 0.064516
+        },
+        {
+          "item": 90,
+          "common_users": 3,
+          "jaccard": 0.046875
+        },
+        {
+          "item": 98,
+          "common_users": 1,
+          "jaccard": 0.045455
+        }
+      ]
+    },
+    {
+      "user": 824,
+      "item": 212,
+      "sources": [
+        {
+          "item": 292,
+          "common_users": 85,
+          "jaccard": 0.204819
+        },
+        {
+          "item": 307,
+          "common_users": 32,
+          "jaccard": 0.15311
+        },
+        {
+          "item": 150,
+          "common_users": 67,
+          "jaccard": 0.131373
+        }
+      ]
+    }
+  ]
+}

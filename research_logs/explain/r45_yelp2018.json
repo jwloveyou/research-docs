@@ -1,0 +1,96 @@
+{
+  "metrics": {
+    "dataset": "yelp2018",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 0.9865,
+    "top1_jaccard_mean": 0.06239,
+    "top3_jaccard_mean": 0.151847,
+    "conciseness_top1_ratio": 0.4315
+  },
+  "examples": [
+    {
+      "user": 603,
+      "item": 6443,
+      "sources": [
+        {
+          "item": 1156,
+          "common_users": 39,
+          "jaccard": 0.062102
+        },
+        {
+          "item": 11096,
+          "common_users": 15,
+          "jaccard": 0.058366
+        },
+        {
+          "item": 4619,
+          "common_users": 10,
+          "jaccard": 0.037453
+        }
+      ]
+    },
+    {
+      "user": 810,
+      "item": 14296,
+      "sources": [
+        {
+          "item": 4557,
+          "common_users": 48,
+          "jaccard": 0.088889
+        },
+        {
+          "item": 12790,
+          "common_users": 15,
+          "jaccard": 0.062241
+        },
+        {
+          "item": 12787,
+          "common_users": 11,
+          "jaccard": 0.050228
+        }
+      ]
+    },
+    {
+      "user": 3974,
+      "item": 11388,
+      "sources": [
+        {
+          "item": 11390,
+          "common_users": 2,
+          "jaccard": 0.027027
+        },
+        {
+          "item": 14908,
+          "common_users": 1,
+          "jaccard": 0.02381
+        },
+        {
+          "item": 28405,
+          "common_users": 1,
+          "jaccard": 0.02381
+        }
+      ]
+    },
+    {
+      "user": 4255,
+      "item": 26772,
+      "sources": [
+        {
+          "item": 29128,
+          "common_users": 1,
+          "jaccard": 0.034483
+        },
+        {
+          "item": 22015,
+          "common_users": 1,
+          "jaccard": 0.030303
+        },
+        {
+          "item": 424,
+          "common_users": 1,
+          "jaccard": 0.022727
+        }
+      ]
+    }
+  ]
+}

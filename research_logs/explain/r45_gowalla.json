@@ -1,0 +1,117 @@
+{
+  "metrics": {
+    "dataset": "gowalla",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 0.978,
+    "top1_jaccard_mean": 0.096402,
+    "top3_jaccard_mean": 0.227013,
+    "conciseness_top1_ratio": 0.459
+  },
+  "examples": [
+    {
+      "user": 201,
+      "item": 31828,
+      "sources": [
+        {
+          "item": 7039,
+          "common_users": 1,
+          "jaccard": 0.1
+        },
+        {
+          "item": 9675,
+          "common_users": 1,
+          "jaccard": 0.090909
+        },
+        {
+          "item": 9676,
+          "common_users": 1,
+          "jaccard": 0.090909
+        }
+      ]
+    },
+    {
+      "user": 974,
+      "item": 3607,
+      "sources": [
+        {
+          "item": 4818,
+          "common_users": 77,
+          "jaccard": 0.176606
+        },
+        {
+          "item": 4785,
+          "common_users": 66,
+          "jaccard": 0.160584
+        },
+        {
+          "item": 4820,
+          "common_users": 59,
+          "jaccard": 0.152062
+        }
+      ]
+    },
+    {
+      "user": 1051,
+      "item": 4039,
+      "sources": [
+        {
+          "item": 1717,
+          "common_users": 7,
+          "jaccard": 0.048276
+        },
+        {
+          "item": 674,
+          "common_users": 11,
+          "jaccard": 0.042802
+        },
+        {
+          "item": 1742,
+          "common_users": 4,
+          "jaccard": 0.037383
+        }
+      ]
+    },
+    {
+      "user": 1370,
+      "item": 3777,
+      "sources": [
+        {
+          "item": 5695,
+          "common_users": 5,
+          "jaccard": 0.096154
+        },
+        {
+          "item": 8882,
+          "common_users": 3,
+          "jaccard": 0.09375
+        },
+        {
+          "item": 1233,
+          "common_users": 8,
+          "jaccard": 0.086957
+        }
+      ]
+    },
+    {
+      "user": 3206,
+      "item": 2525,
+      "sources": [
+        {
+          "item": 628,
+          "common_users": 129,
+          "jaccard": 0.077617
+        },
+        {
+          "item": 1811,
+          "common_users": 142,
+          "jaccard": 0.066729
+        },
+        {
+          "item": 559,
+          "common_users": 121,
+          "jaccard": 0.046289
+        }
+      ]
+    }
+  ]
+}

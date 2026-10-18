@@ -1,0 +1,54 @@
+{
+  "metrics": {
+    "dataset": "ml-1m",
+    "test_pairs_scored": 2000,
+    "coverage_2hop": 1.0,
+    "top1_jaccard_mean": 0.242052,
+    "top3_jaccard_mean": 0.678158,
+    "conciseness_top1_ratio": 0.3583
+  },
+  "examples": [
+    {
+      "user": 2564,
+      "item": 2777,
+      "sources": [
+        {
+          "item": 864,
+          "common_users": 324,
+          "jaccard": 0.245641
+        },
+        {
+          "item": 829,
+          "common_users": 275,
+          "jaccard": 0.243578
+        },
+        {
+          "item": 2397,
+          "common_users": 342,
+          "jaccard": 0.236025
+        }
+      ]
+    },
+    {
+      "user": 2142,
+      "item": 1310,
+      "sources": [
+        {
+          "item": 1342,
+          "common_users": 211,
+          "jaccard": 0.193756
+        },
+        {
+          "item": 510,
+          "common_users": 125,
+          "jaccard": 0.18997
+        },
+        {
+          "item": 1841,
+          "common_users": 181,
+          "jaccard": 0.181
+        }
+      ]
+    }
+  ]
+}
