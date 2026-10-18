@@ -38,6 +38,20 @@ COMPARISONS = [
         b_name="无噪声 (LightGCN)", b=[0.1508, 0.1508, 0.1506],
         metric="NDCG@20", source="同上",
     ),
+    # 组件② win30 退火 on/off (gowalla, R@20)
+    dict(
+        name="组件② win30 退火 (gowalla R@20)",
+        a_name="有退火 (win30)", a=[0.1880, 0.1884, 0.1883],
+        b_name="无退火 (固定 λ)", b=[0.1834, 0.1834, 0.1829],
+        metric="R@20", source="R24 embed256 3seed (有) / R28 ablation 3seed (无, ssl_anneal=0, embed256, 100ep)",
+    ),
+    # 组件② win30 退火 on/off (gowalla, NDCG)
+    dict(
+        name="组件② win30 退火 (gowalla NDCG@20)",
+        a_name="有退火 (win30)", a=[0.1598, 0.1598, 0.1596],
+        b_name="无退火 (固定 λ)", b=[0.1527, 0.1525, 0.1520],
+        metric="NDCG@20", source="同上",
+    ),
     # 组件③ 容量缩放 128->256 (gowalla, R@20)
     dict(
         name="组件③ 容量缩放 128→256 (gowalla R@20)",
@@ -192,10 +206,10 @@ def main():
     for c in COMPARISONS:
         print(f"- {c['name']}: {c['source']}")
     print()
-    print("结论：组件①（噪声，gowalla +6.7%）、组件③（容量 128→256，gowalla +1.3%）、")
-    print("组件④（语义，lastfm +0.82%）三者 3-seed 全部零交叉 + 配对 t 显著 + bootstrap CI 不含 0，")
-    print("增益方向稳健、非 seed 偶然。组件②（win30 退火）'无'侧 3-seed 仍在途（r54），")
-    print("待收后并入本表（'有'侧 = R24 embed256 3seed）。")
+    print("结论：组件①（噪声，gowalla +6.7%）、②（win30 退火，gowalla +2.7%/+4.8%）、③（容量 128→256，gowalla +1.3%）、")
+    print("组件④（语义，lastfm +0.82%）四者 3-seed 全部零交叉 + 配对 t 显著 + bootstrap CI 不含 0，")
+    print("增益方向稳健、非 seed 偶然。组件②「无」侧 3-seed 已于 R72 收齐（r28 ablation gowalla_noanneal s42/43/44），")
+    print("与「有」侧（R24 embed256 3seed）逐项匹配（仅 ssl_anneal 2→0），完整消融表闭合。")
 
 
 if __name__ == "__main__":
