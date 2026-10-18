@@ -340,6 +340,26 @@ class _LightGCN(nn.Module):
         self.ultragcn_ii_neighbor = 10
         self.ultragcn_ii_neighbors = None   # [num_items, K] LongTensor (on device)
         self.ultragcn_ii_weights = None     # [num_items, K] FloatTensor (on device)
+        # DGCF baseline (SIGIR'20, arXiv:2007.01764). dgcf=False keeps the NoiseSGL
+        # backbone (backward compatible); dgcf=True switches to the faithful DGCF
+        # architecture: K learnable intent prototypes c_k ([d/K, ]), per-layer
+        # disentangled propagation where each factor k is aggregated over the graph with
+        # routing weights p(u,i,k)=softmax_k((e_{u,k}^T c_k + e_{i,k}^T c_k)/tau), and the
+        # final embedding = sum-over-layers of the [K, d/K]-factorized embedding. It uses
+        # NO contrastive SSL; instead an independence (distance-correlation) regulariser
+        # decorrelates the K factor chunks (paper eq. 12-13). This is the canonical
+        # 'disentangled intent' baseline and -- because the intent prototypes + routing
+        # are LEARNED structural parameters -- another clean counterfactual to our
+        # 'static wins' iron law (R4/R19, alongside NGCF/HCCF/DCCF/AdaGCL).
+        self.dgcf = False
+        self.dgcf_n_factors = 4
+        self.dgcf_temp = 1.0
+        self.dgcf_ind_reg = 1e-2
+        self.dgcf_intent = None      # [K, d/K] intent prototypes (nn.Parameter)
+        self.dgcf_h = None           # [2E] edge source indices (long, on device)
+        self.dgcf_t = None           # [2E] edge target indices (long, on device)
+        self.dgcf_indices = None     # [2, 2E] stacked edge indices
+        self.dgcf_vals = None        # [2E] normalised adjacency edge weights
 
         # # weight initialization
         # self.reset_parameters()
@@ -404,6 +424,20 @@ class _LightGCN(nn.Module):
             sup_neg_ratings = inner_product(user_embs, neg_item_embs)
             sup_logits = sup_pos_ratings - sup_neg_ratings
             return sup_logits, None, None, None, None
+
+        if self.dgcf:
+            # DGCF baseline (task #10): faithful disentangled propagation, NO contrastive
+            # SSL. The 2nd return slot carries the independence (distance-correlation)
+            # regulariser instead of an InfoNCE loss.
+            user_embeddings, item_embeddings, factors = self._forward_dgcf(self.norm_adj)
+            user_embs = F.embedding(users, user_embeddings)
+            item_embs = F.embedding(items, item_embeddings)
+            neg_item_embs = F.embedding(neg_items, item_embeddings)
+            sup_pos_ratings = inner_product(user_embs, item_embs)
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)
+            sup_logits = sup_pos_ratings - sup_neg_ratings
+            ind = self._dgcf_independence(users, items, factors)
+            return sup_logits, ind, None, None, None
 
         user_embeddings, item_embeddings = self._forward_gcn(
             main_adj if main_adj is not None else self.norm_adj,
@@ -1068,6 +1102,86 @@ class _LightGCN(nn.Module):
             all_embeddings, [self.num_users, self.num_items], dim=0)
         return user_embeddings, item_embeddings
 
+    def _forward_dgcf(self, adj):
+        """Faithful DGCF propagation (arXiv:2007.01764, eq. 6-9).
+
+        The embedding is factorised into K chunks of dim d/K: e_u = [e_{u,1};...;e_{u,K}].
+        For each interaction (u,i) the k-th intent routing weight is
+            p(u,i,k) = softmax_k( (e_{u,k}^T c_k + e_{i,k}^T c_k) / tau ),
+        where c_k are K learnable intent prototypes ([d/K, ]). Each factor k is then
+        propagated on the normalised bipartite graph with edge weights w*p(:,k), i.e. a
+        separate weighted GCN per intent (the key difference from LightGCN's single
+        shared propagation). The final embedding is the SUM over all L+1 layer embeddings
+        (LightGCN-style layer pooling) of the [K, d/K]-factorised tensor, reshaped back
+        to [N, d]. Returns (user_emb, item_emb, factors) where factors is [N, K, d/K]
+        (the layer-pooled factorised tensor, used by the independence regulariser)."""
+        d = self.embed_dim
+        K = self.dgcf_n_factors
+        dk = d // K
+        assert d % K == 0, "embed_dim must be divisible by dgcf_n_factors"
+        ego = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        ego = ego.view(-1, K, dk)                       # [N, K, dk]
+        n_nodes = ego.shape[0]
+        all_embeddings = [ego]
+        intent = self.dgcf_intent                        # [K, dk]
+        for _ in range(self.n_layers):
+            u_emb = ego[:self.num_users]                 # [U, K, dk]
+            i_emb = ego[self.num_users:]                 # [I, K, dk]
+            u_score = torch.einsum('ukd,kd->uk', u_emb, intent)   # [U, K]
+            i_score = torch.einsum('ikd,kd->ik', i_emb, intent)   # [I, K]
+            full_score = torch.cat([u_score, i_score], dim=0)     # [N, K]
+            # Routing logits are symmetric: edge (u->i) and (i->u) share the same
+            # (score[u]+score[i]); the bidirectional edge list makes both consistent.
+            edge_logits = full_score[self.dgcf_h] + full_score[self.dgcf_t]  # [2E, K]
+            p = torch.softmax(edge_logits / self.dgcf_temp, dim=1)          # [2E, K]
+            new_factors = []
+            for k in range(K):
+                w_k = self.dgcf_vals * p[:, k]           # [2E] routing-weighted adjacency
+                sp_k = torch.sparse_coo_tensor(
+                    self.dgcf_indices, w_k, (n_nodes, n_nodes)).coalesce()
+                new_factors.append(torch_sp.mm(sp_k, ego[:, k]))   # [N, dk]
+            ego = torch.stack(new_factors, dim=1)        # [N, K, dk]
+            all_embeddings.append(ego)
+        # LightGCN-style sum-over-layers pooling on the factorised tensor (the official
+        # DGCF keeps all L+1 embeddings via residual sum; concatenation is used by NGCF).
+        final = torch.stack(all_embeddings, dim=0).sum(dim=0)   # [N, K, dk]
+        final_flat = final.view(n_nodes, d)                     # [N, d]
+        user_embeddings, item_embeddings = torch.split(
+            final_flat, [self.num_users, self.num_items], dim=0)
+        return user_embeddings, item_embeddings, final
+
+    def _dgcf_independence(self, users, items, factors):
+        """DGCF independence regulariser (paper eq. 12-13): distance correlation between
+        the K factor chunks, averaged over all factor pairs, computed on the batch user
+        and item factors. A smaller value means the intents are more decorrelated."""
+        K = self.dgcf_n_factors
+        uf = factors[:self.num_users][users]     # [B, K, dk]
+        if_ = factors[self.num_users:][items]    # [B, K, dk]
+        cat = torch.cat([uf, if_], dim=0)        # [2B, K, dk]
+        n = cat.shape[0]
+        # Pairwise squared Euclidean distance matrix per factor: [K, n, n]
+        # ||x_i - x_j||^2 = ||x_i||^2 + ||x_j||^2 - 2 x_i^T x_j
+        sq = (cat * cat).sum(-1)                  # [2B, K]
+        dist2 = sq.unsqueeze(1) + sq.unsqueeze(0) - 2.0 * torch.einsum('akd,bkd->abk', cat, cat)
+        dist2 = dist2.clamp_min(0.0)              # [n, n, K]  (numerical safety)
+        dist2 = dist2.permute(2, 0, 1)            # [K, n, n]
+        dist = torch.sqrt(dist2 + 1e-12)          # [K, n, n]
+        # Double-centering: A_k = D_k - row_mean - col_mean + grand_mean
+        row_mean = dist.mean(dim=1, keepdim=True)
+        col_mean = dist.mean(dim=2, keepdim=True)
+        grand_mean = dist.mean(dim=(1, 2), keepdim=True)
+        A = dist - row_mean - col_mean + grand_mean   # [K, n, n]
+        loss = 0.0
+        npairs = 0
+        for a in range(K):
+            for b in range(a + 1, K):
+                dvar_a = (A[a] * A[a]).sum() / (n * n) + 1e-12
+                dvar_b = (A[b] * A[b]).sum() / (n * n) + 1e-12
+                dcov = (A[a] * A[b]).sum() / (n * n)
+                loss = loss + (dcov / torch.sqrt(dvar_a * dvar_b))
+                npairs += 1
+        return loss / float(npairs)
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -1202,6 +1316,12 @@ class _LightGCN(nn.Module):
             # NGCF: full adjacency, no dropout (self.training=False makes F.dropout a
             # no-op), concatenated (L+1)*d embedding for ranking.
             self._user_embeddings_final, self._item_embeddings_final = self._forward_ngcf(
+                self.norm_adj)
+            return
+        if self.dgcf:
+            # DGCF: full adjacency, deterministic routing (no dropout in the architecture);
+            # sum-over-layers of the [K, d/K]-factorised embedding for ranking.
+            self._user_embeddings_final, self._item_embeddings_final, _ = self._forward_dgcf(
                 self.norm_adj)
             return
         if self.ultragcn:
@@ -1619,6 +1739,22 @@ class NoiseSGL(AbstractRecommender):
         self.ultragcn_gamma = float(config["ultragcn_gamma"]) if "ultragcn_gamma" in config else 1.0
         self.ultragcn_ii_neighbor = int(config["ultragcn_ii_neighbor"]) if "ultragcn_ii_neighbor" in config else 10
         assert self.ultragcn_ii_neighbor >= 1
+        # DGCF baseline (task #10, classic baseline, SIGIR'20 arXiv:2007.01764).
+        # dgcf=1 switches the whole forward/eval to the faithful DGCF architecture
+        # (learnable intent prototypes + per-intent disentangled propagation + an
+        # independence/distance-correlation regulariser). It uses NO contrastive SSL;
+        # dgcf_n_factors=K (paper default 4), dgcf_temp the routing temperature tau
+        # (paper default 1.0), dgcf_ind_reg the independence weight (paper lambda_2,
+        # default 1e-2). These REPLACE our fusion components (noise / SSL anneal /
+        # semantic), which do not apply to DGCF.
+        self.dgcf = int(config["dgcf"]) if "dgcf" in config else 0
+        assert self.dgcf in (0, 1)
+        self.dgcf_n_factors = int(config["dgcf_n_factors"]) if "dgcf_n_factors" in config else 4
+        assert self.dgcf_n_factors >= 2
+        assert self.emb_size % self.dgcf_n_factors == 0, (
+            "embed_size must be divisible by dgcf_n_factors")
+        self.dgcf_temp = float(config["dgcf_temp"]) if "dgcf_temp" in config else 1.0
+        self.dgcf_ind_reg = float(config["dgcf_ind_reg"]) if "dgcf_ind_reg" in config else 1e-2
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -1902,6 +2038,28 @@ class NoiseSGL(AbstractRecommender):
             self.lightgcn.ultragcn_ii_weights = torch.from_numpy(ii_weights).float().to(self.device)
             self.logger.info("[ultragcn] lambda=%.2f gamma=%.2f ii_neighbor=%d" % (
                 self.ultragcn_lambda, self.ultragcn_gamma, self.ultragcn_ii_neighbor))
+        self.lightgcn.dgcf = bool(self.dgcf)
+        self.lightgcn.dgcf_n_factors = self.dgcf_n_factors
+        self.lightgcn.dgcf_temp = self.dgcf_temp
+        self.lightgcn.dgcf_ind_reg = self.dgcf_ind_reg
+        if self.dgcf:
+            # DGCF learnable intent prototypes c_k ([K, d/K], xavier_uniform init like
+            # the official implementation), created directly on self.device (see the
+            # HCCF note: fresh Parameters assigned after .to(device) would stay on CPU
+            # and crash the GPU forward). The bidirectional edge list + normalised edge
+            # weights are cached once from norm_adj for the per-factor weighted spmm.
+            dk = self.emb_size // self.dgcf_n_factors
+            self.lightgcn.dgcf_intent = nn.Parameter(
+                torch.empty(self.dgcf_n_factors, dk, device=self.device))
+            nn.init.xavier_uniform_(self.lightgcn.dgcf_intent)
+            adj_c = self.lightgcn.norm_adj.coalesce()
+            self.lightgcn.dgcf_indices = adj_c.indices()
+            self.lightgcn.dgcf_h = adj_c.indices()[0]
+            self.lightgcn.dgcf_t = adj_c.indices()[1]
+            self.lightgcn.dgcf_vals = adj_c.values()
+            self.logger.info("[dgcf] n_factors=%d temp=%.2f ind_reg=%.1e dk=%d edges=%d" % (
+                self.dgcf_n_factors, self.dgcf_temp, self.dgcf_ind_reg, dk,
+                int(self.lightgcn.dgcf_h.shape[0])))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -2651,9 +2809,10 @@ class NoiseSGL(AbstractRecommender):
                     bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
                 else:
                     bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
-                if self.hccf or self.dccf or self.ngcf:
-                    # HCCF/DCCF/NGCF official use a MEAN-scaled BPR (batch mean), matching
-                    # their mean-scaled losses so the official SSL:BPR / BPR-only ratios hold.
+                if self.hccf or self.dccf or self.ngcf or self.dgcf:
+                    # HCCF/DCCF/NGCF/DGCF official use a MEAN-scaled BPR (batch mean),
+                    # matching their mean-scaled losses so the official SSL:BPR / BPR-only
+                    # ratios hold.
                     bpr_loss = -torch.mean(F.logsigmoid(sup_logits))
 
                 # Reg Loss
@@ -2725,6 +2884,12 @@ class NoiseSGL(AbstractRecommender):
                     # are not L2-regularised, matching the official implementation). No
                     # InfoNCE / anneal / fcl / dau / spec (our fusion components, not NGCF's).
                     loss = bpr_loss + self.reg * reg_loss
+                elif self.dgcf:
+                    # DGCF faithful loss: mean-BPR + ind_reg * independence(distance-correlation
+                    # of the K factor chunks) + reg * L2 on the layer-0 embedding table
+                    # (paper eq. 10-13; the intent prototypes are not L2-regularised). The
+                    # 2nd forward return slot (infonce_loss) carries the independence loss.
+                    loss = bpr_loss + self.dgcf_ind_reg * infonce_loss + self.reg * reg_loss
                 else:
                     ssl_weight = self._ssl_weight(epoch)
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
