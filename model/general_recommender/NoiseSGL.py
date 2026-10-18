@@ -1150,6 +1150,19 @@ class NoiseSGL(AbstractRecommender):
         # SOTA; 'On the Overlooked Pitfalls of Weight Decay' (arXiv:2011.11152).
         self.weight_decay = float(config["weight_decay"]) if "weight_decay" in config else 0.0
         self.param_init = config["param_init"]
+        # Round-60: embedding initialization scale (4th-component candidate #18,
+        # initialization axis). init_scale=1.0 keeps the standard initializer output
+        # (backward compatible); >1 / <1 rescales the layer-0 embedding table right
+        # after reset_parameters so the initial embedding norm (and hence the initial
+        # BPR score scale / early gradient magnitude) changes. Static, parameter-free
+        # (respects the R1/R15/R18 'static wins' law), orthogonal to noise (R1) / SSL
+        # anneal (R15) / capacity (R18) / semantic (R47) and to all queued candidates.
+        # Motivation (E11, arXiv:2310.04400 / RankElastor 2605.23191): noise releases
+        # the embedding rank *during* training; init scale is the complementary
+        # *initial-condition* knob on the same rank/norm geometry, and the standard
+        # xavier_uniform bound (sqrt(6/(fan_in+fan_out))) was never tuned for the
+        # noise-SSL backbone. Scan {0.5, 1.0, 2.0, 5.0} on gowalla embed256 60ep.
+        self.init_scale = float(config["init_scale"]) if "init_scale" in config else 1.0
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
         # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
@@ -1780,6 +1793,11 @@ class NoiseSGL(AbstractRecommender):
             self.lightgcn.reset_parameters(pretrain=self.pretrain_flag, dir=self.save_dir)
         else:
             self.lightgcn.reset_parameters(init_method=self.param_init)
+        if self.init_scale != 1.0:
+            with torch.no_grad():
+                self.lightgcn.user_embeddings.weight.mul_(self.init_scale)
+                self.lightgcn.item_embeddings.weight.mul_(self.init_scale)
+            self.logger.info("[init-scale] init_scale=%.3f applied to user/item layer-0 embeddings" % self.init_scale)
         if self.adagcl:
             # AdaGCL uses THREE optimisers (official Main.py): opt (main embeddings),
             # opt_gen_1 (VGAE generator), opt_gen_2 (denoising generator, with its own
