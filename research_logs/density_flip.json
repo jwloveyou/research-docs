@@ -1,0 +1,127 @@
+{
+  "rows": [
+    {
+      "dataset": "ifashion",
+      "density": 5.1e-05,
+      "fusion": 0.1155,
+      "lgn": 0.0953,
+      "delta_pct": 21.196222455403998,
+      "tag": "peak",
+      "note": "峰@ep3 后过拟合，容量错配(embed256 过参数化)"
+    },
+    {
+      "dataset": "yelp_full",
+      "density": 7.5e-05,
+      "fusion": 0.103,
+      "lgn": 0.0682,
+      "delta_pct": 51.02639296187683,
+      "tag": "peak",
+      "note": "峰@ep3 后过拟合，容量错配；emb128 亦过拟合"
+    },
+    {
+      "dataset": "amazon-kindle",
+      "density": 0.000112,
+      "fusion": 0.2516,
+      "lgn": 0.1013,
+      "delta_pct": 148.37117472852913,
+      "tag": "early",
+      "note": "10ep 早峰 +148%，超稀疏"
+    },
+    {
+      "dataset": "amazon-book",
+      "density": 0.00062,
+      "fusion": 0.0551,
+      "lgn": 0.0411,
+      "delta_pct": 34.06326034063262,
+      "tag": "win",
+      "note": "R24 3-seed"
+    },
+    {
+      "dataset": "amazon-beauty",
+      "density": 0.000651,
+      "fusion": 0.1105,
+      "lgn": 0.078,
+      "delta_pct": 41.666666666666664,
+      "tag": "win",
+      "note": "+41.7%"
+    },
+    {
+      "dataset": "gowalla",
+      "density": 0.00084,
+      "fusion": 0.188,
+      "lgn": 0.183,
+      "delta_pct": 2.7322404371584725,
+      "tag": "win",
+      "note": "R24 3-seed，+2.7%"
+    },
+    {
+      "dataset": "tmall",
+      "density": 0.00119,
+      "fusion": 0.0991,
+      "lgn": 0.0651,
+      "delta_pct": 52.22734254992318,
+      "tag": "early",
+      "note": "融合 ep18 vs lgn ep30(升)，+56% 早期"
+    },
+    {
+      "dataset": "yelp2018",
+      "density": 0.0013,
+      "fusion": 0.0709,
+      "lgn": 0.0649,
+      "delta_pct": 9.244992295839761,
+      "tag": "win",
+      "note": "R24 3-seed，+9.2%"
+    },
+    {
+      "dataset": "douban-book",
+      "density": 0.0017,
+      "fusion": 0.1984,
+      "lgn": 0.1897,
+      "delta_pct": 4.58618871903004,
+      "tag": "win",
+      "note": "+4.6%"
+    },
+    {
+      "dataset": "ml-10m",
+      "density": 0.0147,
+      "fusion": null,
+      "lgn": null,
+      "delta_pct": null,
+      "tag": "early",
+      "note": "在途：fusion ep6=0.1880 爬升中"
+    },
+    {
+      "dataset": "lastfm-2k",
+      "density": 0.023,
+      "fusion": 0.4164,
+      "lgn": 0.3977,
+      "delta_pct": 4.702036711088759,
+      "tag": "win",
+      "note": "3-seed 全胜，+4.1%"
+    },
+    {
+      "dataset": "ml-1m",
+      "density": 0.0507,
+      "fusion": 0.2535,
+      "lgn": 0.2621,
+      "delta_pct": -3.281190385349102,
+      "tag": "lose",
+      "note": "−3.3%，密度边界反例"
+    },
+    {
+      "dataset": "jester",
+      "density": 0.725,
+      "fusion": 0.946,
+      "lgn": 0.9458,
+      "delta_pct": 0.0211461196870351,
+      "tag": "neutral",
+      "note": "72.5% 极稠密，fusion≈lgn (+0.02%)"
+    }
+  ],
+  "rho_flip_interval": [
+    0.023,
+    0.0507
+  ],
+  "rho_flip_midpoint": 0.03685,
+  "prescription": "ssl_reg=0.1 if density<rho_flip else 0.0"
+}
