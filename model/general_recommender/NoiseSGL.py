@@ -611,6 +611,26 @@ class NoiseSGL(AbstractRecommender):
         self.lr_anneal_epochs = int(config["lr_anneal_epochs"]) if "lr_anneal_epochs" in config else 0
         self.lr_floor = float(config["lr_floor"]) if "lr_floor" in config else 0.1
         assert 0.0 < self.lr_floor <= 1.0
+        # Round-40: stochastic weight averaging (SWA) of the embedding tables as the
+        # 4th-component candidate #14 (CV cross-domain: SWA UAI'18 arXiv:1803.05407;
+        # also the EMA/momentum-encoder trick of BYOL arXiv:2006.07733 / MoCo
+        # arXiv:1911.05722 / Mean Teacher arXiv:1703.01780, transplanted to CF).
+        # swa_start=0 keeps the standard single-best-snapshot protocol (backward
+        # compatible). swa_start>0 accumulates an EQUAL-weight average of the embedding
+        # weights over epochs [swa_start, E] and evaluates the ranking with that average
+        # (not the last/best single snapshot). It directly targets the one remaining
+        # documented weakness -- the pure-BPR fine-tune phase (after ssl_anneal_epochs=30
+        # the SSL weight is 0) peaks (gowalla embed256 ~ep61) and then deterministically
+        # overfits (R12c/R15/R23) -- by flattening the late-stage loss surface.
+        # Static, parameter-free (respects the R1/R15/R18 'static wins' law); orthogonal
+        # to noise (R1) / SSL anneal (R15) / capacity (R18) and to all queued candidates.
+        self.swa_start = int(config["swa_start"]) if "swa_start" in config else 0
+        assert self.swa_start >= 0
+        self.swa_n = 0
+        self.swa_user = None      # running sum of user embedding weights
+        self.swa_item = None      # running sum of item embedding weights
+        self._swa_bk_user = None  # persistent backup for the swap-in/out
+        self._swa_bk_item = None
 
         # Hyper-parameters for GCN
         self.n_layers = config['n_layers']
@@ -815,6 +835,8 @@ class NoiseSGL(AbstractRecommender):
         # Other hyper-parameters
         self.best_epoch = 0
         self.best_result = np.zeros([2], dtype=float)
+        if self.swa_start > 0:
+            self.logger.info("[swa] swa_start=%d (embedding-table weight averaging from this epoch)" % self.swa_start)
 
         self.model_str = '#layers=%d-reg=%.0e' % (
             self.n_layers,
@@ -1473,6 +1495,18 @@ class NoiseSGL(AbstractRecommender):
                 total_reg_loss / self.num_ratings,
                 time()-training_start_time,))
 
+            # Round-40: accumulate the embedding weights into the SWA running average
+            # (after this epoch's optimizer steps, before the periodic evaluation).
+            if self.swa_start > 0 and epoch >= self.swa_start:
+                with torch.no_grad():
+                    if self.swa_n == 0:
+                        self.swa_user = self.lightgcn.user_embeddings.weight.data.clone()
+                        self.swa_item = self.lightgcn.item_embeddings.weight.data.clone()
+                    else:
+                        self.swa_user.add_(self.lightgcn.user_embeddings.weight.data)
+                        self.swa_item.add_(self.lightgcn.item_embeddings.weight.data)
+                    self.swa_n += 1
+
             if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
                 result, flag = self.evaluate_model()
                 self.logger.info("epoch %d:\t%s" % (epoch, result))
@@ -1506,10 +1540,34 @@ class NoiseSGL(AbstractRecommender):
         self.logger.info("\t\t%s" % buf)
 
     # @timer
+    def _swap_in_swa(self):
+        """Temporarily replace the embedding tables with the SWA running average for
+        evaluation; the current weights are backed up into persistent buffers."""
+        with torch.no_grad():
+            if self._swa_bk_user is None:
+                self._swa_bk_user = self.lightgcn.user_embeddings.weight.data.clone()
+                self._swa_bk_item = self.lightgcn.item_embeddings.weight.data.clone()
+            else:
+                self._swa_bk_user.copy_(self.lightgcn.user_embeddings.weight.data)
+                self._swa_bk_item.copy_(self.lightgcn.item_embeddings.weight.data)
+            self.lightgcn.user_embeddings.weight.data.copy_(self.swa_user / float(self.swa_n))
+            self.lightgcn.item_embeddings.weight.data.copy_(self.swa_item / float(self.swa_n))
+
+    def _swap_out_swa(self):
+        """Restore the original (non-averaged) embedding weights after SWA evaluation."""
+        with torch.no_grad():
+            self.lightgcn.user_embeddings.weight.data.copy_(self._swa_bk_user)
+            self.lightgcn.item_embeddings.weight.data.copy_(self._swa_bk_item)
+
     def evaluate_model(self):
         flag = False
+        swa_active = self.swa_n > 0
+        if swa_active:
+            self._swap_in_swa()
         self.lightgcn.eval()
         current_result, buf = self.evaluator.evaluate(self)
+        if swa_active:
+            self._swap_out_swa()
         if self.best_result[1] < current_result[1]:
             self.best_result = current_result
             flag = True
