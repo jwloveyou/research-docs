@@ -1,0 +1,41 @@
+{
+  "dataset": "ml-10m",
+  "n_items": 9708,
+  "embed_size": 256,
+  "n_interactions": 7996376,
+  "k": 32,
+  "buckets": [
+    {
+      "bucket": 0,
+      "n_items": 3236,
+      "deg_min": 4,
+      "deg_max": 60,
+      "deg_mean": 28.464771322620518,
+      "sem_eff_rank": 204.086,
+      "sem_mean_pairwise_cos": 0.09003,
+      "sem_collab_jaccard": 0.0412
+    },
+    {
+      "bucket": 1,
+      "n_items": 3236,
+      "deg_min": 60,
+      "deg_max": 348,
+      "deg_mean": 159.0061804697157,
+      "sem_eff_rank": 232.872,
+      "sem_mean_pairwise_cos": 0.04381,
+      "sem_collab_jaccard": 0.04016
+    },
+    {
+      "bucket": 2,
+      "n_items": 3236,
+      "deg_min": 348,
+      "deg_max": 27976,
+      "deg_mean": 2283.5970333745363,
+      "sem_eff_rank": 246.038,
+      "sem_mean_pairwise_cos": 0.02166,
+      "sem_collab_jaccard": 0.04134
+    }
+  ],
+  "full_eff_rank": 233.363,
+  "full_mean_pairwise_cos": 0.04265
+}

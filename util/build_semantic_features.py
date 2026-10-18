@@ -67,6 +67,16 @@ def load_lastfm_pairs():
     return np.asarray(pairs, dtype=np.int64)
 
 
+def load_ml10m_pairs():
+    """MovieLens-10M ratings.dat: UserID::MovieID::Rating::Timestamp (ml-1m format)."""
+    pairs = []
+    with open(os.path.join(RAW, "ml-10m", "ratings.dat")) as f:
+        for line in f:
+            u, i, _r, _t = line.strip().split("::")
+            pairs.append((int(u), int(i)))
+    return np.asarray(pairs, dtype=np.int64)
+
+
 def k_core(pairs, k):
     pairs = np.asarray(pairs, dtype=np.int64)
     while True:
@@ -88,7 +98,8 @@ def reconstruct_org_item_ids(ds):
     ascending) -> 0..n_items-1, and does not save the mapping, so we reconstruct
     it deterministically here (the id assignment is seed-independent).
     """
-    loader = load_ml1m_pairs if ds == "ml-1m" else load_lastfm_pairs
+    loader = {"ml-1m": load_ml1m_pairs,
+              "ml-10m": load_ml10m_pairs}.get(ds, load_lastfm_pairs)
     pairs = k_core(loader(), CORE)
     return np.unique(pairs[:, 1]).astype(np.int64)
 
@@ -161,6 +172,35 @@ def load_ml1m_item_text():
     return id2text
 
 
+def load_ml10m_item_text():
+    """org movie id -> (title, list of genre + user tags) for MovieLens-10M."""
+    id2text = {}
+    with open(os.path.join(RAW, "ml-10m", "movies.dat"), encoding="latin-1") as f:
+        for line in f:
+            p = line.strip().split("::")
+            if len(p) < 3:
+                continue
+            mid = int(p[0])
+            title = p[1]
+            genres = [g.lower() for g in p[2].split("|")]
+            id2text[mid] = (title, genres)
+    # merge user-assigned free-text tags (tags.dat: user::movie::tag::ts)
+    id2tags = {}
+    with open(os.path.join(RAW, "ml-10m", "tags.dat"), encoding="latin-1") as f:
+        for line in f:
+            p = line.strip().split("::")
+            if len(p) < 3:
+                continue
+            try:
+                mid = int(p[1])
+            except ValueError:
+                continue
+            id2tags.setdefault(mid, set()).add(p[2].lower())
+    for mid, (title, genres) in id2text.items():
+        id2text[mid] = (title, genres + sorted(id2tags.get(mid, set())))
+    return id2text
+
+
 # ---------------------------------------------------------------- encoding
 def build_tfidf(texts, min_df=1):
     """texts: list of (name, [tags]). Returns tfidf matrix + vocab list."""
@@ -216,6 +256,8 @@ def main():
 
         if ds == "ml-1m":
             id2text = load_ml1m_item_text()
+        elif ds == "ml-10m":
+            id2text = load_ml10m_item_text()
         else:
             id2name, id2tags = load_lastfm_artist_tags()
             id2text = {a: (id2name.get(a, "artist%d" % a), id2tags.get(a, []))
