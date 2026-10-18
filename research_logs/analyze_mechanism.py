@@ -61,9 +61,12 @@ def build(config_args):
     root_dir = ROOT + "/"
     data_dir = root_dir + "dataset/"
     config = Configurator(root_dir, data_dir)
-    config.add_config(root_dir + "NeuRec.ini", section="NeuRec")
-    # inject command-line overrides before the model config is read
+    # inject command-line overrides BEFORE any ini file is read, so that
+    # keys living in the NeuRec section (notably `dataset`) are overridden too.
+    # (This was the R57 bug: setting _cmd_args after NeuRec.ini made the script
+    #  silently load the default dataset yelp2018 instead of --dataset=...)
     config._cmd_args = {k: str(v) for k, v in config_args.items()}
+    config.add_config(root_dir + "NeuRec.ini", section="NeuRec")
     config.add_config(root_dir + "conf/NoiseSGL.ini", section="hyperparameters", used_as_summary=True)
     return NoiseSGL(config)
 
