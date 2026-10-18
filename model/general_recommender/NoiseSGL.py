@@ -2861,16 +2861,29 @@ class NoiseSGL(AbstractRecommender):
             bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
             u_emb = self.lightgcn.user_embeddings(bat_users)
             i_emb = self.lightgcn.item_embeddings(bat_pos_items)
-            j_emb = self.lightgcn.item_embeddings(bat_neg_items)
-            pos = (u_emb * i_emb).sum(-1)
-            neg = (u_emb * j_emb).sum(-1)
-            # L_O: pointwise BCE over observed + sampled-negative pairs (paper eq. 13).
-            loss_o = -torch.mean(F.logsigmoid(pos) + F.logsigmoid(-neg))
+            pos = (u_emb * i_emb).sum(-1)                              # [B]
+            # R negative items per positive pair (paper R=300; driven by our
+            # num_negatives config via _multi_neg_sampler). num_negatives=1 yields the
+            # original [B] shape; num_negatives>1 yields [B, K] so the negative BCE is
+            # averaged over K candidates (each negative carries 1/K of a positive's
+            # weight, so R negatives collectively balance one positive).
+            if bat_neg_items.dim() == 1:
+                j_emb = self.lightgcn.item_embeddings(bat_neg_items)   # [B, d]
+                neg = (u_emb * j_emb).sum(-1)                          # [B]
+                beta_neg = fu[bat_users] * fi[bat_neg_items]           # [B]
+                neg_flat = bat_neg_items
+            else:
+                B, K = bat_neg_items.shape
+                j_emb = self.lightgcn.item_embeddings(bat_neg_items)   # [B, K, d]
+                neg = (u_emb.unsqueeze(1) * j_emb).sum(-1)             # [B, K]
+                beta_neg = fu[bat_users].unsqueeze(1) * fi[bat_neg_items]  # [B, K]
+                neg_flat = bat_neg_items.reshape(-1)
+            # L_O: pointwise BCE over observed + R sampled-negative pairs (paper eq. 13).
+            loss_o = -F.logsigmoid(pos).mean() - F.logsigmoid(-neg).mean()
             # L_C: degree-weighted constraint loss (paper eq. 12),
             # beta_{u,i} = (1/d_u)*sqrt((d_u+1)/(d_i+1)) = fu[u]*fi[i].
             beta_pos = fu[bat_users] * fi[bat_pos_items]
-            beta_neg = fu[bat_users] * fi[bat_neg_items]
-            loss_c = -torch.mean(beta_pos * F.logsigmoid(pos) + beta_neg * F.logsigmoid(-neg))
+            loss_c = -(beta_pos * F.logsigmoid(pos)).mean() - (beta_neg * F.logsigmoid(-neg)).mean()
             # L_I: item-item co-occurrence constraint (paper eq. 17).
             nb = ii_nb[bat_pos_items]                                  # [B, K]
             wt = ii_wt[bat_pos_items]                                  # [B, K]
@@ -2883,7 +2896,7 @@ class NoiseSGL(AbstractRecommender):
             reg_loss = l2_loss(
                 self.lightgcn.user_embeddings(bat_users),
                 self.lightgcn.item_embeddings(bat_pos_items),
-                self.lightgcn.item_embeddings(bat_neg_items))
+                self.lightgcn.item_embeddings(neg_flat))
             loss = loss + self.reg * reg_loss
             self.optimizer.zero_grad()
             loss.backward()
