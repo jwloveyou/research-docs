@@ -129,6 +129,25 @@ class _LightGCN(nn.Module):
         self.lightgcl_perlayer = 1   # 1 = per-layer InfoNCE (paper eq.6); 0 = final emb only
         self.gl_UqS = None    # [I, q] = U_q * S_q  (user side, bipartite SVD)
         self.gl_VqS = None    # [J, q] = V_q * S_q  (item side, bipartite SVD)
+        # HCCF baseline (SIGIR'22, arXiv:2204.12200, official repo akaxlh/HCCF
+        # torchVersion/Model.py). hccf=False keeps the NoiseSGL backbone (backward
+        # compatible); hccf=True switches to the faithful HCCF architecture for the
+        # No.1-baseline same-protocol comparison (task #8): a *learnable* hypergraph
+        # dependency matrix (u_hyper / i_hyper, [d, H]) projects the embeddings onto
+        # H hyperedges, and the hypergraph view is HH^T E (HGNN: adj^T@embeds then
+        # adj@lat). Per layer the local GCN embedding (edge-dropped in training) is
+        # ADDED to the hypergraph embedding, and the final embedding = sum over all
+        # L+1 layer embeddings (paper: embeds = sum(lats)). The SSL objective
+        # contrasts the *detached* local GCN view against the hypergraph view per
+        # layer (user- and item-side), exactly as in the official code (contrastLoss).
+        # This is a learnable-structure baseline, deliberately placed side-by-side with
+        # our 'static wins' iron law (R4/R19) as the cleanest counterfactual experiment.
+        self.hccf = False
+        self.hccf_hyper_num = 128
+        self.hccf_keep_rate = 0.5
+        self.hccf_temp = 1.0
+        self.u_hyper = None   # [embed_dim, H] learnable user->hyperedge dependency
+        self.i_hyper = None   # [embed_dim, H] learnable item->hyperedge dependency
         # Round-8: RecDCL-style feature-wise contrastive learning (FCL). Representation
         # layer only -> does NOT touch the propagation operator (respects R4/R6). All
         # coefficients default to 0 (module off, backward compatible).
@@ -204,6 +223,24 @@ class _LightGCN(nn.Module):
             init(self.item_embeddings.weight)
 
     def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
+        if self.hccf:
+            # HCCF baseline (task #8): faithful local-GCN + hypergraph architecture with
+            # local-vs-hypergraph per-layer contrast. sub_graph1 is the edge-dropped adj
+            # (training) or self.norm_adj (fallback); the hypergraph dropout is handled
+            # inside _forward_hccf via self.training.
+            adj = sub_graph1 if sub_graph1 is not None else self.norm_adj
+            embeds, gnn_lats, hyper_lats = self._forward_hccf(adj)
+            user_embeddings, item_embeddings = torch.split(
+                embeds, [self.num_users, self.num_items], dim=0)
+            user_embs = F.embedding(users, user_embeddings)
+            item_embs = F.embedding(items, item_embeddings)
+            neg_item_embs = F.embedding(neg_items, item_embeddings)
+            sup_pos_ratings = inner_product(user_embs, item_embs)
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)
+            sup_logits = sup_pos_ratings - sup_neg_ratings
+            infonce = self._hccf_infonce(users, items, gnn_lats, hyper_lats)
+            return sup_logits, infonce, None, None, None
+
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True, apply_dropout=True)
 
         if self.l2_norm:
@@ -460,6 +497,71 @@ class _LightGCN(nn.Module):
             loss = loss + torch.sum(cu) + torch.sum(ci)
         return loss
 
+    def _forward_hccf(self, adj):
+        """Faithful HCCF forward pass (official akaxlh/HCCF torchVersion/Model.py).
+
+        Local GCN view:   tem = D^{-1/2} A' D^{-1/2} . lat_{k-1}   (A' = edge-dropped adj
+        in training, full adj at eval).
+        Hypergraph view:  uu_hyper = E_u @ u_hyper  ([I,H]);  hyper_u = uu_hyper @ (uu_hyper^T @ u_lat).
+        Per layer:        lat_k = tem + [hyper_u ; hyper_i].
+        Final:            embeds = sum(lats)  (sum over the L+1 layer embeddings).
+        Returns (embeds, gnn_lats, hyper_lats) with gnn_lats/hyper_lats of length n_layers.
+        """
+        embeds = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        lats = [embeds]
+        gnn_lats = []
+        hyper_lats = []
+        # learnable hyperedge-dependency matrices. The official code applies a FRESH
+        # dropout mask to uu_hyper/ii_hyper at EVERY layer (inside the loop), so we do the
+        # same here; nn.functional.dropout is a no-op when self.training is False -> eval
+        # stays clean (keep_rate=1.0 effectively).
+        uu_hyper_raw = self.user_embeddings.weight @ self.u_hyper   # [I, H]
+        ii_hyper_raw = self.item_embeddings.weight @ self.i_hyper   # [J, H]
+        for _k in range(self.n_layers):
+            tem_embeds = torch_sp.mm(adj, lats[-1])
+            uu_hyper = F.dropout(uu_hyper_raw, p=1.0 - self.hccf_keep_rate, training=self.training)
+            ii_hyper = F.dropout(ii_hyper_raw, p=1.0 - self.hccf_keep_rate, training=self.training)
+            u_lat = lats[-1][:self.num_users]
+            i_lat = lats[-1][self.num_users:]
+            hyper_u = uu_hyper @ (uu_hyper.t() @ u_lat)   # [I, H] @ [H, I] @ [I, d]
+            hyper_i = ii_hyper @ (ii_hyper.t() @ i_lat)   # [J, H] @ [H, J] @ [J, d]
+            gnn_lats.append(tem_embeds)
+            hyper_lats.append(torch.cat([hyper_u, hyper_i], dim=0))
+            lats.append(tem_embeds + hyper_lats[-1])
+        embeds = sum(lats)
+        return embeds, gnn_lats, hyper_lats
+
+    def _hccf_infonce(self, users, items, gnn_lats, hyper_lats):
+        """Faithful HCCF contrastive loss (official Utils/Utils.contrastLoss).
+
+        For each GNN layer: contrast the *detached* local GCN view (stop-gradient, the
+        official code does embeds1.detach()) against the hypergraph view, over the
+        unique users / unique positive items in the batch (batch-limited negatives, NOT
+        the full-graph logsumexp used by our NoiseSGL InfoNCE). Mean-scaled per node
+        (the official .mean()), summed over user + item side and over layers.
+        """
+        loss = 0.0
+        uniq_u = torch.unique(users)
+        uniq_i = torch.unique(items)
+        for k in range(len(gnn_lats)):
+            embeds1 = gnn_lats[k].detach()      # local view: stop-gradient (official)
+            embeds2 = hyper_lats[k]             # hypergraph view
+            u1 = F.normalize(embeds1[:self.num_users] + 1e-8, dim=1)
+            u2 = F.normalize(embeds2[:self.num_users] + 1e-8, dim=1)
+            i1 = F.normalize(embeds1[self.num_users:] + 1e-8, dim=1)
+            i2 = F.normalize(embeds2[self.num_users:] + 1e-8, dim=1)
+            # user side
+            p1, p2 = u1[uniq_u], u2[uniq_u]
+            nume = torch.exp(torch.sum(p1 * p2, dim=-1) / self.hccf_temp)
+            deno = torch.exp(p1 @ p2.t() / self.hccf_temp).sum(-1) + 1e-8
+            loss = loss + (-torch.log(nume / deno)).mean()
+            # item side
+            p1, p2 = i1[uniq_i], i2[uniq_i]
+            nume = torch.exp(torch.sum(p1 * p2, dim=-1) / self.hccf_temp)
+            deno = torch.exp(p1 @ p2.t() / self.hccf_temp).sum(-1) + 1e-8
+            loss = loss + (-torch.log(nume / deno)).mean()
+        return loss
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -556,6 +658,12 @@ class _LightGCN(nn.Module):
 
     def eval(self):
         super(_LightGCN, self).eval()
+        if self.hccf:
+            # HCCF: full (non-dropped) adjacency, no hypergraph dropout (training=False).
+            embeds, _, _ = self._forward_hccf(self.norm_adj)
+            self._user_embeddings_final, self._item_embeddings_final = torch.split(
+                embeds, [self.num_users, self.num_items], dim=0)
+            return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
         if self.l2_norm:
@@ -841,6 +949,21 @@ class NoiseSGL(AbstractRecommender):
         # 0 uses only the final mean-pooled embedding (cheaper single-step variant).
         self.lightgcl = int(config["lightgcl"]) if "lightgcl" in config else 0
         self.lightgcl_perlayer = int(config["lightgcl_perlayer"]) if "lightgcl_perlayer" in config else 1
+        # HCCF baseline (task #8, No.1 baseline). hccf=1 switches the whole forward/eval to
+        # the faithful HCCF architecture (official akaxlh/HCCF): learnable hyperedge
+        # dependency matrices u_hyper/i_hyper ([d,H]), per-layer local-GCN + hypergraph
+        # HH^T E residual, sum-over-layers final embedding, and local(detached)-vs-
+        # hypergraph per-layer contrast (batch-limited negatives). hccf_keep_rate is the
+        # edge-drop keep probability (official 0.5); hccf_ssl_reg the contrast weight
+        # (official 1e-3); hccf_temp the contrast temperature (official 1.0). These are
+        # used INSTEAD of our ssl_reg/ssl_temp/ssl_anneal (which do not apply to HCCF).
+        self.hccf = int(config["hccf"]) if "hccf" in config else 0
+        assert self.hccf in (0, 1)
+        self.hccf_hyper_num = int(config["hccf_hyper_num"]) if "hccf_hyper_num" in config else 128
+        self.hccf_keep_rate = float(config["hccf_keep_rate"]) if "hccf_keep_rate" in config else 0.5
+        assert 0.0 < self.hccf_keep_rate <= 1.0
+        self.hccf_ssl_reg = float(config["hccf_ssl_reg"]) if "hccf_ssl_reg" in config else 1e-3
+        self.hccf_temp = float(config["hccf_temp"]) if "hccf_temp" in config else 1.0
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -956,6 +1079,22 @@ class NoiseSGL(AbstractRecommender):
                 self.gate_init, self.n_layers))
         self.lightgcn.lightgcl = bool(self.lightgcl)
         self.lightgcn.lightgcl_perlayer = int(self.lightgcl_perlayer)
+        self.lightgcn.hccf = bool(self.hccf)
+        self.lightgcn.hccf_hyper_num = self.hccf_hyper_num
+        self.lightgcn.hccf_keep_rate = self.hccf_keep_rate
+        self.lightgcn.hccf_temp = self.hccf_temp
+        if self.hccf:
+            # learnable hyperedge-dependency matrices (HCCF official: xavier_uniform on
+            # [latdim, hyperNum] Parameters, registered on the _LightGCN module so they
+            # are optimised by the same Adam).
+            self.lightgcn.u_hyper = nn.Parameter(
+                torch.empty(self.emb_size, self.hccf_hyper_num))
+            self.lightgcn.i_hyper = nn.Parameter(
+                torch.empty(self.emb_size, self.hccf_hyper_num))
+            nn.init.xavier_uniform_(self.lightgcn.u_hyper)
+            nn.init.xavier_uniform_(self.lightgcn.i_hyper)
+            self.logger.info("[hccf] hyper_num=%d keep_rate=%.2f ssl_reg=%.1e temp=%.2f" % (
+                self.hccf_hyper_num, self.hccf_keep_rate, self.hccf_ssl_reg, self.hccf_temp))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -1400,6 +1539,16 @@ class NoiseSGL(AbstractRecommender):
                 if n_ed >= 2:
                     sub_graph2 = sp_mat_to_sp_tensor(
                         self.create_adj_mat(is_subgraph=True, aug_type=self.ssl_aug_type)).to(self.device)
+            if self.hccf:
+                # HCCF: one edge-dropped adjacency per epoch (keep hccf_keep_rate of edges;
+                # our create_adj_mat drops self.ssl_ratio of edges, so override it to
+                # 1 - keep_rate for this call only). The hypergraph-side dropout is applied
+                # inside _forward_hccf (training-only).
+                _saved_ratio = self.ssl_ratio
+                self.ssl_ratio = 1.0 - self.hccf_keep_rate
+                sub_graph1 = sp_mat_to_sp_tensor(
+                    self.create_adj_mat(is_subgraph=True, aug_type="ed")).to(self.device)
+                self.ssl_ratio = _saved_ratio
             data_iter = self._pairwise_iter()
             self.lightgcn.train()
             cur_eps = self._noise_eps(epoch)
@@ -1436,6 +1585,10 @@ class NoiseSGL(AbstractRecommender):
                     bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
                 else:
                     bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
+                if self.hccf:
+                    # HCCF official uses a MEAN-scaled BPR (batch mean), matching its
+                    # mean-scaled contrast loss so the official 1e-3 SSL:BPR ratio holds.
+                    bpr_loss = -torch.mean(F.logsigmoid(sup_logits))
 
                 # Reg Loss
                 reg_loss = l2_loss(
@@ -1447,7 +1600,7 @@ class NoiseSGL(AbstractRecommender):
                 # InfoNCE Loss is computed inside forward() so that >=2 views can be
                 # mixed; for view_mix="nn" it is identical to the original single pair.
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
-                if self.use_mlc:
+                if self.use_mlc and not self.hccf:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
                                                             perturb=True, eps=cur_eps)
                     layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
@@ -1487,14 +1640,20 @@ class NoiseSGL(AbstractRecommender):
                         mlc_loss += float(weight) * torch.sum((cu * u_weight) + (ci * i_weight))
                     infonce_loss = infonce_loss + mlc_loss
 
-                ssl_weight = self._ssl_weight(epoch)
-                loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
-                if fcl_loss is not None:
-                    loss = loss + fcl_loss
-                if dau_loss is not None:
-                    loss = loss + dau_loss
-                if spec_loss is not None:
-                    loss = loss + self.spec_bal * spec_loss
+                if self.hccf:
+                    # HCCF faithful loss: mean-BPR + hccf_ssl_reg * mean-contrast + reg * L2.
+                    # No annealing / fcl / dau / spec -- those are our fusion components
+                    # (R13/R15/R8/R9/R35), not part of HCCF, and would break faithfulness.
+                    loss = bpr_loss + self.hccf_ssl_reg * infonce_loss + self.reg * reg_loss
+                else:
+                    ssl_weight = self._ssl_weight(epoch)
+                    loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
+                    if fcl_loss is not None:
+                        loss = loss + fcl_loss
+                    if dau_loss is not None:
+                        loss = loss + dau_loss
+                    if spec_loss is not None:
+                        loss = loss + self.spec_bal * spec_loss
                 total_loss += loss
                 total_bpr_loss += bpr_loss
                 total_reg_loss += self.reg * reg_loss
