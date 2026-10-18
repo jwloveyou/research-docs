@@ -1,0 +1,184 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-19 03:34:40.066: my pid: 81035
+2026-10-19 03:34:40.066: model: model.general_recommender.NoiseSGL
+2026-10-19 03:34:40.066: Dataset statistics:
+Name: lastfm-2k
+The number of users: 1797
+The number of items: 1507
+The number of ratings: 62376
+Average actions of users: 34.71
+Average actions of items: 41.39
+The sparsity of the dataset: 97.696670%
+
+The number of training: 49900
+The number of validation: 0
+The number of testing: 12476
+2026-10-19 03:34:40.066: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=lastfm-2k
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=256
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+noise_item_boost=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+ngcf=0
+ngcf_node_dropout=0.1
+ngcf_message_dropout=0.1
+ultragcn=0
+ultragcn_lambda=1.0
+ultragcn_gamma=1.0
+ultragcn_ii_neighbor=10
+dgcf=0
+dgcf_n_factors=4
+dgcf_temp=1.0
+dgcf_ind_reg=0.01
+ncl=0
+ncl_ssl_reg=1e-7
+ncl_proto_reg=8e-8
+ncl_temp=0.1
+ncl_hyper_layers=1
+ncl_alpha=1.0
+ncl_num_clusters=1000
+ncl_m_step=1
+ncl_warm_up=20
+ncl_kmeans_iters=10
+ncl_kmeans_seed=0
+directau=0
+directau_gamma=1.0
+directau_t=2.0
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=100
+batch_size=1024
+num_negatives=1
+bpr_margin=0.0
+sem_emb=1
+sem_lam=2.0
+l2_norm=0
+dropout=0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+init_scale=1.0
+stddev=0.01
+verbose=1
+stop_cnt=1000
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=lastfm-2k
+seed=42
+epochs=100
+verbose=1
+stop_cnt=1000
+embed_size=256
+view_mix=nn
+use_mlc=0
+noise_eps=0.2
+ssl_reg=0.1
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+l2_norm=0
+dropout=0
+sem_emb=1
+sem_lam=2.0
+gpu_id=0
+create_adj_mat function cost: 0.007514s
+2026-10-19 03:34:40.633: [sem] loaded item_sem /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/item_sem.npy -> shape=(1507, 256) lam=2.00
+2026-10-19 03:34:40.633: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-19 03:34:41.506: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-19 03:34:57.918: [iter 1 : loss : 1.2700 = 0.6747 + 0.5953 + 0.0001, time: 16.407771]
+2026-10-19 03:34:58.135: epoch 1:	0.05650489  	0.18371774  	0.13660008  
+2026-10-19 03:34:58.135: Find a better model.
+2026-10-19 03:35:13.287: [iter 2 : loss : 1.2031 = 0.6727 + 0.5303 + 0.0001, time: 15.142756]
+2026-10-19 03:35:13.511: epoch 2:	0.06077634  	0.19481754  	0.14679728  
+2026-10-19 03:35:13.511: Find a better model.
+2026-10-19 03:35:28.939: [iter 3 : loss : 1.1826 = 0.6653 + 0.5172 + 0.0001, time: 15.421496]
+2026-10-19 03:35:29.164: epoch 3:	0.06825821  	0.21455088  	0.16414551  
+2026-10-19 03:35:29.164: Find a better model.
