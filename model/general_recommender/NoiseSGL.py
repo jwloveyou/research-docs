@@ -170,6 +170,43 @@ class _LightGCN(nn.Module):
         self.dccf_t = None         # [2E] edge target indices (long, on device)
         self.dccf_indices = None   # [2, 2E] stacked edge indices for torch.sparse_coo_tensor
         self.dccf_n_nodes = 0
+        # AdaGCL baseline (KDD'23, arXiv:2305.10837, official repo HKUDS/AdaGCL Model.py).
+        # adagcl=False keeps the NoiseSGL backbone (backward compatible); adagcl=True
+        # switches to the faithful AdaGCL architecture for the No.1-baseline same-protocol
+        # comparison (task #8, the third and last No.1 baseline): TWO trainable contrastive
+        # view generators -- (1) a variational graph auto-encoder (VGAE) that learns a new
+        # edge-probability view (its OWN embedding tables + encoder mean/std MLPs + an
+        # inner-product decoder; an edge is kept iff its predicted probability >= 0.5, and
+        # the surviving normalised edge weights are rescaled by the keep ratio), and (2) a
+        # graph-denoising net that learns per-layer edge masks via L0 hard-concrete gating
+        # (row-normalised attention on the edge endpoints). The InfoNCE contrasts the VGAE
+        # view against the denoised view (batch-limited negatives, temp 0.5) plus an
+        # information-bottleneck term. This is a learnable-structure baseline, the third
+        # clean counterfactual to our 'static wins' iron law (R4/R19), after HCCF (R43) and
+        # DCCF (R44). The generator submodules (created in NoiseSGL.__init__ when adagcl=1)
+        # are named with an 'adagcl_' prefix so their parameters can be cleanly split into
+        # the three official optimizers (main / VGAE / denoising).
+        self.adagcl = False
+        self.adagcl_temp = 0.5
+        self.adagcl_beta = 0.1
+        self.adagcl_reg = 1e-5
+        self.adagcl_lambda0 = 1e-4
+        self.adagcl_gamma = -0.45
+        self.adagcl_zeta = 1.05
+        self.adagcl_h = None        # [2E] edge source indices (long, on device)
+        self.adagcl_t = None        # [2E] edge target indices (long, on device)
+        self.adagcl_indices = None  # [2, 2E] stacked edge indices
+        self.adagcl_vals = None     # [2E] normalised edge weights
+        self.adagcl_n_nodes = 0
+        self.adagcl_emb_u = None    # nn.Embedding (VGAE's own user embeddings)
+        self.adagcl_emb_i = None    # nn.Embedding (VGAE's own item embeddings)
+        self.adagcl_enc_mean = None # VGAE encoder mean MLP
+        self.adagcl_enc_std = None  # VGAE encoder std MLP
+        self.adagcl_dec = None      # VGAE inner-product decoder MLP
+        self.adagcl_nb = None       # nn.ModuleList (per-layer denoising neighbour MLP)
+        self.adagcl_self = None     # nn.ModuleList (per-layer denoising self MLP)
+        self.adagcl_attn = None     # nn.ModuleList (per-layer denoising attention MLP)
+        self._adagcl_edge_weights = []   # accumulated log_alpha per layer (L0 loss)
         # Round-8: RecDCL-style feature-wise contrastive learning (FCL). Representation
         # layer only -> does NOT touch the propagation operator (respects R4/R6). All
         # coefficients default to 0 (module off, backward compatible).
@@ -707,6 +744,203 @@ class _LightGCN(nn.Module):
             loss += cal_loss(i_gnn, i_int) + cal_loss(i_gnn, i_gaa) + cal_loss(i_gnn, i_iaa)
         return loss
 
+    # ------------------------------------------------------------------ #
+    # AdaGCL baseline (task #8, third No.1 baseline). Faithful port of the
+    # official HKUDS/AdaGCL Model.py. All the trainable view-generator logic
+    # lives here (VGAE + denoising net); the optimiser orchestration lives in
+    # NoiseSGL._adagcl_batch_loop.
+    # ------------------------------------------------------------------ #
+    def _adagcl_main_embeds(self):
+        return torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+
+    def _adagcl_gcn_sum(self, adj, init_embeds):
+        """AdaGCL backbone: SUM over the L+1 layer embeddings (official forward_graphcl /
+        forward_gcn both do `sum(embedsLst)`, NOT the LightGCN mean-pooling)."""
+        embeds_lst = [init_embeds]
+        for _ in range(self.n_layers):
+            embeds_lst.append(torch_sp.mm(adj, embeds_lst[-1]))
+        return sum(embeds_lst)
+
+    def _adagcl_vgae_encode(self):
+        """VGAE encoder: LightGCN-sum over the VGAE's OWN embeddings, then reparameterise
+        with the mean/std MLPs (official vgae_encoder.forward)."""
+        x = self._adagcl_gcn_sum(
+            self.norm_adj, torch.cat([self.adagcl_emb_u.weight, self.adagcl_emb_i.weight], dim=0))
+        x_mean = self.adagcl_enc_mean(x)
+        x_std = self.adagcl_enc_std(x)
+        gaussian_noise = torch.randn_like(x_mean)
+        x = gaussian_noise * x_std + x_mean
+        return x, x_mean, x_std
+
+    def _adagcl_vgae_generate(self):
+        """VGAE contrastive view (official vgae.generate, called under torch.no_grad by the
+        caller): predict an edge-probability for every (directed) edge of the full normalised
+        adjacency, keep the edges with p>=0.5, and rescale the surviving normalised edge
+        weights by E/kept so the total mass is preserved. Chunked over edges because the
+        [2E, d] endpoint-product materialisation would OOM at embed_size=256 (the official
+        runs at latdim=32 where it is cheap)."""
+        x, _, _ = self._adagcl_vgae_encode()
+        E = int(self.adagcl_h.shape[0])
+        probs = torch.empty(E, device=x.device)
+        chunk = 1 << 20
+        for s in range(0, E, chunk):
+            e = min(s + chunk, E)
+            h = self.adagcl_h[s:e]
+            t = self.adagcl_t[s:e]
+            probs[s:e] = torch.sigmoid(self.adagcl_dec(x[h] * x[t])).squeeze(-1)
+        mask = ((probs + 0.5).floor()).bool()
+        kept = int(mask.sum().item())
+        if kept == 0:
+            return self.norm_adj
+        new_vals = self.adagcl_vals[mask] / (float(kept) / float(E))
+        new_idx = self.adagcl_indices[:, mask]
+        return torch.sparse_coo_tensor(
+            new_idx, new_vals, (self.adagcl_n_nodes, self.adagcl_n_nodes)).coalesce()
+
+    def _adagcl_denoise_log_alpha(self, x, layer):
+        """Chunked per-edge attention logits of the L0 gate (official DenoisingNet.
+        get_attention): logit_e = attn_k([nb_k(x_h) ; self_k(x_t)])."""
+        E = int(self.adagcl_h.shape[0])
+        log_alpha = torch.empty(E, device=x.device)
+        nb = self.adagcl_nb[layer]
+        sl = self.adagcl_self[layer]
+        attn = self.adagcl_attn[layer]
+        chunk = 1 << 20
+        for s in range(0, E, chunk):
+            e = min(s + chunk, E)
+            f1 = nb(x[self.adagcl_h[s:e]])
+            f2 = sl(x[self.adagcl_t[s:e]])
+            log_alpha[s:e] = attn(torch.cat([f1, f2], dim=1)).squeeze(-1)
+        return log_alpha
+
+    def _adagcl_hard_concrete(self, log_alpha, temperature, training):
+        """L0 hard-concrete gate (official hard_concrete_sample with beta=1.0): training
+        uses the Gumbel-style stochastic relaxation, eval uses the deterministic
+        sigmoid(log_alpha)."""
+        if training:
+            u = torch.rand_like(log_alpha).clamp_(1e-7, 1.0 - 1e-7)
+            gate = torch.sigmoid((torch.log(u) - torch.log(1.0 - u) + log_alpha) / 1.0)
+        else:
+            gate = torch.sigmoid(log_alpha)
+        stretched = gate * (self.adagcl_zeta - self.adagcl_gamma) + self.adagcl_gamma
+        return torch.clamp(stretched, 0.0, 1.0)
+
+    def _adagcl_denoise_support(self, x, layer, temperature, training):
+        """Per-layer denoised adjacency: mask = hard-concrete(attention(x_h, x_t)), then
+        degree-renormalise D^{-1/2} (masked A) D^{-1/2} (official DenoisingNet.generate /
+        call). Returns (support, log_alpha) so the caller can accumulate log_alpha for the
+        L0 sparsity loss."""
+        log_alpha = self._adagcl_denoise_log_alpha(x, layer)
+        mask = self._adagcl_hard_concrete(log_alpha, temperature, training)
+        d_scores = torch.zeros(self.adagcl_n_nodes, device=x.device)
+        d_scores.index_add_(0, self.adagcl_h, mask)
+        d_inv_sqrt = torch.clamp(torch.pow(d_scores + 1e-12, -0.5), 0.0, 10.0)
+        vals = mask * d_inv_sqrt[self.adagcl_h] * d_inv_sqrt[self.adagcl_t]
+        support = torch.sparse_coo_tensor(
+            self.adagcl_indices, vals, (self.adagcl_n_nodes, self.adagcl_n_nodes)).coalesce()
+        return support, log_alpha
+
+    def _adagcl_denoise_propagate(self, x, mask):
+        """Message passing for a grad-requiring denoised mask WITHOUT torch.sparse.mm:
+        out[i] = sum_{e: h_e=i} mask_e * d_inv[h_e] * d_inv[t_e] * x[t_e]. Chunked over
+        edges. This explicit gather + index_add formulation is REQUIRED because
+        torch.sparse.mm's backward w.r.t. a grad-requiring sparse VALUES densifies to
+        O(n^2) (it materialises grad @ x^T); the explicit message keeps the autograd
+        graph O(E*d) (the official AdaGCL uses torch-sparse's spmm, which has the same
+        efficient sparse-value backward)."""
+        n = self.adagcl_n_nodes
+        d_scores = torch.zeros(n, device=x.device)
+        d_scores.index_add_(0, self.adagcl_h, mask)
+        d_inv_sqrt = torch.clamp(torch.pow(d_scores + 1e-12, -0.5), 0.0, 10.0)
+        w = mask * d_inv_sqrt[self.adagcl_h] * d_inv_sqrt[self.adagcl_t]   # [E]
+        out = torch.zeros(n, x.shape[1], device=x.device)
+        E = int(self.adagcl_h.shape[0])
+        chunk = 1 << 20
+        for s in range(0, E, chunk):
+            e = min(s + chunk, E)
+            out.index_add_(0, self.adagcl_h[s:e], w[s:e].unsqueeze(1) * x[self.adagcl_t[s:e]])
+        return out
+
+    def _adagcl_denoise_view(self):
+        """Denoised contrastive view (official Model.forward_graphcl_): the MAIN embeddings
+        propagated through a per-layer denoised adjacency; each layer's mask is computed
+        under torch.no_grad() with training=False (deterministic), so no gradient flows to
+        the denoising net from the contrastive view (it is trained only by its own loss)."""
+        embeds = self._adagcl_main_embeds()
+        embeds_lst = [embeds]
+        for k in range(self.n_layers):
+            with torch.no_grad():
+                support, _ = self._adagcl_denoise_support(embeds_lst[-1], k, 1.0, training=False)
+            embeds_lst.append(torch_sp.mm(support, embeds_lst[-1]))
+        return sum(embeds_lst)
+
+    def _adagcl_infonce(self, x1, x2, users, items):
+        """Official AdaGCL contrastive loss (Model.loss_graphcl): L2-normalise both views,
+        gather the batch users + positive items from each view into a combined [2B, d] set,
+        and compute a single InfoNCE whose positives are the diagonal (same node across the
+        two views) and whose negatives are all OTHER batch nodes (users AND items). Returns
+        a [2B] vector; the caller applies .mean() (official)."""
+        T = self.adagcl_temp
+        u1, i1 = torch.split(x1, [self.num_users, self.num_items], dim=0)
+        u2, i2 = torch.split(x2, [self.num_users, self.num_items], dim=0)
+        u1 = F.normalize(u1, dim=1); i1 = F.normalize(i1, dim=1)
+        u2 = F.normalize(u2, dim=1); i2 = F.normalize(i2, dim=1)
+        all1 = torch.cat([u1[users], i1[items]], dim=0)
+        all2 = torch.cat([u2[users], i2[items]], dim=0)
+        sim = torch.exp(all1 @ all2.t() / T)
+        pos = torch.diag(sim)
+        loss = -torch.log(pos / (sim.sum(dim=1) - pos + 1e-8) + 1e-8)
+        return loss
+
+    def _adagcl_vgae_loss(self, users, items, neg_items):
+        """VGAE training loss (official vgae_decoder.forward): per-edge reconstruction BCE
+        (positive edges -> 1, negative edges -> 0) + beta*KL + a BPR on the VGAE's own
+        embeddings + reg over the VGAE encoder (embeddings + mean/std MLPs)."""
+        x, x_mean, x_std = self._adagcl_vgae_encode()
+        x_u, x_i = torch.split(x, [self.num_users, self.num_items], dim=0)
+        pos_pred = torch.sigmoid(self.adagcl_dec(x_u[users] * x_i[items])).squeeze(-1)
+        neg_pred = torch.sigmoid(self.adagcl_dec(x_u[users] * x_i[neg_items])).squeeze(-1)
+        loss_rec = -torch.log(pos_pred + 1e-8) - torch.log(1.0 - neg_pred + 1e-8)
+        kl = -0.5 * (1.0 + 2.0 * torch.log(x_std + 1e-8) - x_mean.pow(2) - x_std.pow(2)).sum(dim=1)
+        anc = x_u[users]; pos = x_i[items]; neg = x_i[neg_items]
+        score_diff = (anc * pos).sum(-1) - (anc * neg).sum(-1)
+        bpr = -torch.log(torch.sigmoid(score_diff) + 1e-8).sum() / float(users.shape[0])
+        reg = self.adagcl_emb_u.weight.norm(2).square() + self.adagcl_emb_i.weight.norm(2).square()
+        for p in self.adagcl_enc_mean.parameters():
+            reg = reg + p.norm(2).square()
+        for p in self.adagcl_enc_std.parameters():
+            reg = reg + p.norm(2).square()
+        loss = (loss_rec + self.adagcl_beta * kl.mean() + bpr + self.adagcl_reg * reg).mean()
+        return loss
+
+    def _adagcl_denoise_loss(self, users, items, neg_items, temperature):
+        """Denoising-net training loss (official DenoisingNet.forward): BPR over the
+        denoised-view embeddings (main embeddings DETACHED, per-layer masks sampled with
+        training=True) + reg over the attention MLPs + lambda0 * L0 sparsity loss."""
+        x = self._adagcl_main_embeds().detach()
+        embeds_lst = [x]
+        self._adagcl_edge_weights = []
+        for k in range(self.n_layers):
+            log_alpha = self._adagcl_denoise_log_alpha(embeds_lst[-1], k)
+            self._adagcl_edge_weights.append(log_alpha)
+            mask = self._adagcl_hard_concrete(log_alpha, temperature, training=True)
+            embeds_lst.append(self._adagcl_denoise_propagate(embeds_lst[-1], mask))
+        x = sum(embeds_lst)
+        x_u, x_i = torch.split(x, [self.num_users, self.num_items], dim=0)
+        anc = x_u[users]; pos = x_i[items]; neg = x_i[neg_items]
+        score_diff = (anc * pos).sum(-1) - (anc * neg).sum(-1)
+        bpr = -torch.log(torch.sigmoid(score_diff) + 1e-8).sum() / float(users.shape[0])
+        reg = 0.0
+        for mlist in (self.adagcl_nb, self.adagcl_self, self.adagcl_attn):
+            for p in mlist.parameters():
+                reg = reg + p.norm(2).square()
+        l0 = 0.0
+        for log_alpha in self._adagcl_edge_weights:
+            l0 = l0 + torch.sigmoid(
+                log_alpha - temperature * math.log(-self.adagcl_gamma / self.adagcl_zeta)).mean()
+        loss = bpr + self.adagcl_reg * reg + self.adagcl_lambda0 * l0
+        return loss
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -812,6 +1046,13 @@ class _LightGCN(nn.Module):
         if self.dccf:
             # DCCF: deterministic (no dropout), full norm_adj drives all four views.
             embeds, _, _, _, _ = self._forward_dccf()
+            self._user_embeddings_final, self._item_embeddings_final = torch.split(
+                embeds, [self.num_users, self.num_items], dim=0)
+            return
+        if self.adagcl:
+            # AdaGCL: sum-over-layers embeddings of the MAIN model on the full adjacency
+            # (official forward_gcn). The generators are NOT used at eval time.
+            embeds = self._adagcl_gcn_sum(self.norm_adj, self._adagcl_main_embeds())
             self._user_embeddings_final, self._item_embeddings_final = torch.split(
                 embeds, [self.num_users, self.num_items], dim=0)
             return
@@ -1130,6 +1371,28 @@ class NoiseSGL(AbstractRecommender):
         self.dccf_emb_reg = float(config["dccf_emb_reg"]) if "dccf_emb_reg" in config else 2.5e-5
         self.dccf_cen_reg = float(config["dccf_cen_reg"]) if "dccf_cen_reg" in config else 5e-3
         self.dccf_ssl_reg = float(config["dccf_ssl_reg"]) if "dccf_ssl_reg" in config else 1e-1
+        # AdaGCL baseline (task #8, third No.1 baseline, arXiv:2305.10837). adagcl=1
+        # switches the whole forward/eval/train to the faithful AdaGCL architecture
+        # (official HKUDS/AdaGCL): a VGAE view generator + a graph-denoising view
+        # generator, contrastive IM loss + information-bottleneck loss + mean-BPR, with
+        # THREE separate optimisers (main / VGAE / denoising). The adagcl_* values are the
+        # official defaults (ssl_reg=0.1, ib_reg=0.1, temp=0.5, beta=0.1, lambda0=1e-4,
+        # gamma=-0.45, zeta=1.05, init_temperature=2.0, temperature_decay=0.98, reg=1e-5,
+        # Adam eps for the denoising optimiser=1e-3); they REPLACE our
+        # ssl_reg/ssl_temp/ssl_anneal/reg which do not apply to AdaGCL.
+        self.adagcl = int(config["adagcl"]) if "adagcl" in config else 0
+        assert self.adagcl in (0, 1)
+        self.adagcl_ssl_reg = float(config["adagcl_ssl_reg"]) if "adagcl_ssl_reg" in config else 0.1
+        self.adagcl_ib_reg = float(config["adagcl_ib_reg"]) if "adagcl_ib_reg" in config else 0.1
+        self.adagcl_reg = float(config["adagcl_reg"]) if "adagcl_reg" in config else 1e-5
+        self.adagcl_temp = float(config["adagcl_temp"]) if "adagcl_temp" in config else 0.5
+        self.adagcl_beta = float(config["adagcl_beta"]) if "adagcl_beta" in config else 0.1
+        self.adagcl_lambda0 = float(config["adagcl_lambda0"]) if "adagcl_lambda0" in config else 1e-4
+        self.adagcl_gamma = float(config["adagcl_gamma"]) if "adagcl_gamma" in config else -0.45
+        self.adagcl_zeta = float(config["adagcl_zeta"]) if "adagcl_zeta" in config else 1.05
+        self.adagcl_init_temp = float(config["adagcl_init_temp"]) if "adagcl_init_temp" in config else 2.0
+        self.adagcl_temp_decay = float(config["adagcl_temp_decay"]) if "adagcl_temp_decay" in config else 0.98
+        self.adagcl_eps = float(config["adagcl_eps"]) if "adagcl_eps" in config else 1e-3
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -1291,6 +1554,51 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[dccf] n_intents=%d temp=%.2f emb_reg=%.1e cen_reg=%.1e ssl_reg=%.1e edges=%d" % (
                 self.dccf_n_intents, self.dccf_temp, self.dccf_emb_reg,
                 self.dccf_cen_reg, self.dccf_ssl_reg, int(edge_idx.shape[1])))
+        self.lightgcn.adagcl = bool(self.adagcl)
+        self.lightgcn.adagcl_temp = self.adagcl_temp
+        self.lightgcn.adagcl_beta = self.adagcl_beta
+        self.lightgcn.adagcl_reg = self.adagcl_reg
+        self.lightgcn.adagcl_lambda0 = self.adagcl_lambda0
+        self.lightgcn.adagcl_gamma = self.adagcl_gamma
+        self.lightgcn.adagcl_zeta = self.adagcl_zeta
+        if self.adagcl:
+            # AdaGCL view-generator modules. Created directly on self.device (see the
+            # HCCF note: a fresh Parameter/module assigned after .to(device) would stay on
+            # CPU and crash the GPU forward). The full normalised adjacency's edge list is
+            # cached once for the VGAE edge-probability decoder and the denoising attention.
+            d = self.emb_size
+            adj_c = self.lightgcn.norm_adj.coalesce()
+            self.lightgcn.adagcl_indices = adj_c.indices()
+            self.lightgcn.adagcl_h = adj_c.indices()[0]
+            self.lightgcn.adagcl_t = adj_c.indices()[1]
+            self.lightgcn.adagcl_vals = adj_c.values()
+            self.lightgcn.adagcl_n_nodes = int(self.num_users + self.num_items)
+            self.lightgcn.adagcl_emb_u = nn.Embedding(self.num_users, d).to(self.device)
+            self.lightgcn.adagcl_emb_i = nn.Embedding(self.num_items, d).to(self.device)
+            nn.init.xavier_uniform_(self.lightgcn.adagcl_emb_u.weight)
+            nn.init.xavier_uniform_(self.lightgcn.adagcl_emb_i.weight)
+            self.lightgcn.adagcl_enc_mean = nn.Sequential(
+                nn.Linear(d, d), nn.ReLU(inplace=True), nn.Linear(d, d)).to(self.device)
+            self.lightgcn.adagcl_enc_std = nn.Sequential(
+                nn.Linear(d, d), nn.ReLU(inplace=True), nn.Linear(d, d), nn.Softplus()).to(self.device)
+            self.lightgcn.adagcl_dec = nn.Sequential(
+                nn.ReLU(inplace=True), nn.Linear(d, d), nn.ReLU(inplace=True),
+                nn.Linear(d, 1)).to(self.device)
+            self.lightgcn.adagcl_nb = nn.ModuleList([
+                nn.Sequential(nn.Linear(d, d), nn.ReLU(inplace=True)).to(self.device)
+                for _ in range(self.n_layers)])
+            self.lightgcn.adagcl_self = nn.ModuleList([
+                nn.Sequential(nn.Linear(d, d), nn.ReLU(inplace=True)).to(self.device)
+                for _ in range(self.n_layers)])
+            self.lightgcn.adagcl_attn = nn.ModuleList([
+                nn.Sequential(nn.Linear(2 * d, 1)).to(self.device)
+                for _ in range(self.n_layers)])
+            self.logger.info("[adagcl] temp=%.2f ssl_reg=%.1e ib_reg=%.1e beta=%.2f lambda0=%.1e gamma=%.2f zeta=%.2f reg=%.1e init_temp=%.2f decay=%.3f eps=%.1e edges=%d" % (
+                self.adagcl_temp, self.adagcl_ssl_reg, self.adagcl_ib_reg,
+                self.adagcl_beta, self.adagcl_lambda0, self.adagcl_gamma,
+                self.adagcl_zeta, self.adagcl_reg, self.adagcl_init_temp,
+                self.adagcl_temp_decay, self.adagcl_eps,
+                int(self.lightgcn.adagcl_h.shape[0])))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -1350,8 +1658,29 @@ class NoiseSGL(AbstractRecommender):
             self.lightgcn.reset_parameters(pretrain=self.pretrain_flag, dir=self.save_dir)
         else:
             self.lightgcn.reset_parameters(init_method=self.param_init)
-        self.optimizer = torch.optim.Adam(self.lightgcn.parameters(), lr=self.lr,
-                                          weight_decay=self.weight_decay)
+        if self.adagcl:
+            # AdaGCL uses THREE optimisers (official Main.py): opt (main embeddings),
+            # opt_gen_1 (VGAE generator), opt_gen_2 (denoising generator, with its own
+            # Adam eps). The 'adagcl_' prefix on the generator submodules cleanly splits
+            # the parameter groups; the main group additionally contains the unused
+            # fcl/directau projectors (they receive no gradient in adagcl mode, harmless).
+            main_params = [p for n, p in self.lightgcn.named_parameters()
+                           if not n.startswith("adagcl_")]
+            vgae_params = [p for n, p in self.lightgcn.named_parameters()
+                           if n.startswith("adagcl_emb_") or n.startswith("adagcl_enc_")
+                           or n.startswith("adagcl_dec")]
+            denoise_params = [p for n, p in self.lightgcn.named_parameters()
+                              if n.startswith("adagcl_nb") or n.startswith("adagcl_self")
+                              or n.startswith("adagcl_attn")]
+            self.optimizer = torch.optim.Adam(main_params, lr=self.lr, weight_decay=0.0)
+            self.opt_gen_1 = torch.optim.Adam(vgae_params, lr=self.lr, weight_decay=0.0)
+            self.opt_gen_2 = torch.optim.Adam(denoise_params, lr=self.lr, weight_decay=0.0,
+                                              eps=self.adagcl_eps)
+            self.logger.info("[adagcl] optimisers: main=%d params, vgae=%d, denoise=%d" % (
+                len(main_params), len(vgae_params), len(denoise_params)))
+        else:
+            self.optimizer = torch.optim.Adam(self.lightgcn.parameters(), lr=self.lr,
+                                              weight_decay=self.weight_decay)
 
     def _init_global_view(self, adj):
         """Truncated SVD of the (symmetric) normalised adjacency: A ~= U_q diag(S_q) V_q^T.
@@ -1717,10 +2046,104 @@ class NoiseSGL(AbstractRecommender):
             sched = 1.0
         return w * sched
 
+    def _adagcl_temperature(self, epoch):
+        """L0 hard-concrete temperature schedule (official Main.py):
+        temperature = max(0.05, init_temperature * decay^(epoch-1))."""
+        return max(0.05, self.adagcl_init_temp * (self.adagcl_temp_decay ** float(epoch - 1)))
+
+    def _adagcl_batch_loop(self, epoch, data_iter):
+        """One epoch of the faithful AdaGCL training loop (official Main.py trainEpoch),
+        with the three-optimiser orchestration: (1) IM InfoNCE between the VGAE view and
+        the denoised view -> step main; (2) information-bottleneck contrast of the
+        post-step views against the detached pre-step views -> step main; (3) mean-BPR +
+        reg on the main model + the two generator losses -> step main/VGAE/denoising.
+        Returns (total_loss, total_bpr, total_reg) for the epoch log line."""
+        temperature = self._adagcl_temperature(epoch)
+        full_adj = self.lightgcn.norm_adj
+        total_loss = total_bpr = total_reg = 0.0
+        for bat_users, bat_pos_items, bat_neg_items in data_iter:
+            bat_users = torch.from_numpy(bat_users).long().to(self.device)
+            bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
+            bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
+            # VGAE view is generated ONCE per batch under no_grad (official
+            # generator_generate wraps generate in torch.no_grad).
+            with torch.no_grad():
+                data1 = self.lightgcn._adagcl_vgae_generate()
+            self.optimizer.zero_grad()
+            self.opt_gen_1.zero_grad()
+            self.opt_gen_2.zero_grad()
+            # (1) IM loss
+            out1 = self.lightgcn._adagcl_gcn_sum(data1, self.lightgcn._adagcl_main_embeds())
+            out2 = self.lightgcn._adagcl_denoise_view()
+            im = self.adagcl_ssl_reg * self.lightgcn._adagcl_infonce(
+                out1, out2, bat_users, bat_pos_items).mean()
+            im.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+            # (2) information-bottleneck loss (post-step views vs detached pre-step views)
+            _out1 = self.lightgcn._adagcl_gcn_sum(data1, self.lightgcn._adagcl_main_embeds())
+            _out2 = self.lightgcn._adagcl_denoise_view()
+            ib = self.adagcl_ib_reg * (
+                self.lightgcn._adagcl_infonce(_out1, out1.detach(), bat_users, bat_pos_items).mean()
+                + self.lightgcn._adagcl_infonce(_out2, out2.detach(), bat_users, bat_pos_items).mean())
+            ib.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+            # (3) main mean-BPR + reg (full-embedding L2, official calcRegLoss)
+            emb = self.lightgcn._adagcl_gcn_sum(full_adj, self.lightgcn._adagcl_main_embeds())
+            ue, ie = torch.split(emb, [self.num_users, self.num_items], dim=0)
+            anc = ue[bat_users]; pos = ie[bat_pos_items]; neg = ie[bat_neg_items]
+            score_diff = (anc * pos).sum(-1) - (anc * neg).sum(-1)
+            bpr = -torch.log(torch.sigmoid(score_diff) + 1e-8).mean()
+            reg = self.adagcl_reg * (
+                self.lightgcn.user_embeddings.weight.norm(2).square()
+                + self.lightgcn.item_embeddings.weight.norm(2).square())
+            (bpr + reg).backward()
+            # generator losses (VGAE reconstruction+KL+BPR, denoising BPR+L0)
+            loss1 = self.lightgcn._adagcl_vgae_loss(bat_users, bat_pos_items, bat_neg_items)
+            loss2 = self.lightgcn._adagcl_denoise_loss(
+                bat_users, bat_pos_items, bat_neg_items, temperature)
+            (loss1 + loss2).backward()
+            self.optimizer.step()
+            self.opt_gen_1.step()
+            self.opt_gen_2.step()
+            total_loss += float((im + ib + bpr + loss1 + loss2).detach())
+            total_bpr += float(bpr.detach())
+            total_reg += float(reg.detach())
+        return total_loss, total_bpr, total_reg
+
     def train_model(self):
         self.logger.info(self.evaluator.metrics_info())
         stopping_step = 0
         for epoch in range(1, self.epochs + 1):
+            if self.adagcl:
+                # AdaGCL baseline: a fully separate training loop (three optimisers, IM/IB/
+                # BPR/generator losses) that does not go through the NoiseSGL forward().
+                total_loss, total_bpr_loss, total_reg_loss = 0.0, 0.0, 0.0
+                training_start_time = time()
+                self.lightgcn.train()
+                data_iter = self._pairwise_iter()
+                total_loss, total_bpr_loss, total_reg_loss = self._adagcl_batch_loop(epoch, data_iter)
+                self.logger.info("[iter %d : loss : %.4f = %.4f + %.4f + %.4f, time: %f]" % (
+                    epoch,
+                    total_loss / self.num_ratings,
+                    total_bpr_loss / self.num_ratings,
+                    (total_loss - total_bpr_loss - total_reg_loss) / self.num_ratings,
+                    total_reg_loss / self.num_ratings,
+                    time() - training_start_time,))
+                if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
+                    result, flag = self.evaluate_model()
+                    self.logger.info("epoch %d:\t%s" % (epoch, result))
+                    if flag:
+                        self.best_epoch = epoch
+                        stopping_step = 0
+                        self.logger.info("Find a better model.")
+                    else:
+                        stopping_step += 1
+                        if stopping_step >= self.stop_cnt:
+                            self.logger.info("Early stopping is trigger at epoch: {}".format(epoch))
+                            break
+                continue
             if self.proto_K > 0 and ((epoch - 1) % self.proto_interval == 0):
                 self._cluster_prototypes()
             total_loss, total_bpr_loss, total_reg_loss = 0.0, 0.0, 0.0
