@@ -303,6 +303,24 @@ class _LightGCN(nn.Module):
         self.fcl_bn = nn.BatchNorm1d(d, affine=False)
         self.u_target_his = None
         self.i_target_his = None
+        # NGCF baseline (SIGIR'19, arXiv:1905.08108). ngcf=False keeps the NoiseSGL
+        # backbone (backward compatible); ngcf=True switches to the faithful NGCF
+        # architecture for the classic-baseline same-protocol comparison (task #10):
+        # per-layer learnable feature-transformation matrices W1/W2 ([d,d]), the
+        # NGCF message construction (self-message W1*e_u + neighbour messages
+        # W1*e_i + W2*(e_i ⊙ e_u), normalised by 1/sqrt(|N_u||N_i|) which the
+        # pre-normalised adjacency already encodes), LeakyReLU(0.2) activation, and
+        # the final embedding = CONCATENATION of all L+1 layer embeddings (so the
+        # final dim is (L+1)*d, unlike LightGCN's mean-pool). It uses node dropout
+        # on the layer-0 input and message dropout after each activation (official
+        # NGCF defaults 0.1/0.1). This is the direct predecessor of LightGCN and the
+        # most conspicuously missing classic baseline; as a learnable-structure model
+        # it is another clean counterfactual to our 'static wins' iron law (R4/R19).
+        self.ngcf = False
+        self.ngcf_node_dropout = 0.1
+        self.ngcf_message_dropout = 0.1
+        self.ngcf_w1 = None   # nn.ModuleList of per-layer W1 ([d, d])
+        self.ngcf_w2 = None   # nn.ModuleList of per-layer W2 ([d, d])
 
         # # weight initialization
         # self.reset_parameters()
@@ -354,6 +372,19 @@ class _LightGCN(nn.Module):
             sup_logits = sup_pos_ratings - sup_neg_ratings
             infonce = self._dccf_infonce(users, items, gnn_lats, int_lats, gaa_lats, iaa_lats)
             return sup_logits, infonce, None, None, None
+
+        if self.ngcf:
+            # NGCF baseline (task #10): faithful NGCF architecture, NO contrastive SSL
+            # (NGCF uses BPR only). The final embeddings are the (L+1)*d concatenation;
+            # the BPR score is the inner product on that concatenated space.
+            user_embeddings, item_embeddings = self._forward_ngcf(self.norm_adj)
+            user_embs = F.embedding(users, user_embeddings)
+            item_embs = F.embedding(items, item_embeddings)
+            neg_item_embs = F.embedding(neg_items, item_embeddings)
+            sup_pos_ratings = inner_product(user_embs, item_embs)
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)
+            sup_logits = sup_pos_ratings - sup_neg_ratings
+            return sup_logits, None, None, None, None
 
         user_embeddings, item_embeddings = self._forward_gcn(
             main_adj if main_adj is not None else self.norm_adj,
@@ -982,6 +1013,42 @@ class _LightGCN(nn.Module):
         loss = bpr + self.adagcl_reg * reg + self.adagcl_lambda0 * l0
         return loss
 
+    def _forward_ngcf(self, adj):
+        """Faithful NGCF propagation (arXiv:1905.08108, eq. 6-8).
+
+        Per layer k (0-indexed), with c_ui = 1/sqrt(|N_u||N_i|) already encoded in the
+        pre-normalised adjacency A_hat (D^-1/2 A D^-1/2):
+            m_{u<-u}   = W1 @ e_u                                   (self message)
+            m_{u<-i}   = c_ui (W1 @ e_i + W2 @ (e_i ⊙ e_u))         (neighbour message)
+            e_u^{(k)}  = LeakyReLU(m_{u<-u} + sum_i m_{u<-i})
+        In matrix form the neighbour part factorises because e_u does not depend on i:
+            sum_i c_ui (e_i ⊙ e_u) = (sum_i c_ui e_i) ⊙ e_u = (A_hat @ ego) ⊙ ego,
+        which is exactly the official NGCF implementation (side = A_hat @ ego;
+        bi = ego ⊙ side). The final embedding is the CONCATENATION of all L+1 layer
+        embeddings (dim (L+1)*d). Node dropout on the layer-0 input and message dropout
+        after each activation follow the official defaults (0.1/0.1)."""
+        ego_embeddings = torch.cat(
+            [self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        if self.ngcf_node_dropout > 0.0 and self.training:
+            ego_embeddings = F.dropout(
+                ego_embeddings, p=self.ngcf_node_dropout, training=True)
+        all_embeddings = [ego_embeddings]
+        for k in range(self.n_layers):
+            side_embeddings = torch_sp.mm(adj, ego_embeddings)   # sum_i c_ui e_i
+            bi_embeddings = ego_embeddings * side_embeddings     # e_u ⊙ (sum_i c_ui e_i)
+            side_embeddings = self.ngcf_w1[k](side_embeddings)   # W1 @ (A_hat @ ego)
+            bi_embeddings = self.ngcf_w2[k](bi_embeddings)       # W2 @ (ego ⊙ A_hat ego)
+            ego_embeddings = self.ngcf_w1[k](ego_embeddings) + side_embeddings + bi_embeddings
+            ego_embeddings = F.leaky_relu(ego_embeddings, negative_slope=0.2)
+            if self.ngcf_message_dropout > 0.0 and self.training:
+                ego_embeddings = F.dropout(
+                    ego_embeddings, p=self.ngcf_message_dropout, training=True)
+            all_embeddings += [ego_embeddings]
+        all_embeddings = torch.cat(all_embeddings, dim=1)   # (L+1)*d
+        user_embeddings, item_embeddings = torch.split(
+            all_embeddings, [self.num_users, self.num_items], dim=0)
+        return user_embeddings, item_embeddings
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -1111,6 +1178,12 @@ class _LightGCN(nn.Module):
             embeds = self._adagcl_gcn_sum(self.norm_adj, self._adagcl_main_embeds())
             self._user_embeddings_final, self._item_embeddings_final = torch.split(
                 embeds, [self.num_users, self.num_items], dim=0)
+            return
+        if self.ngcf:
+            # NGCF: full adjacency, no dropout (self.training=False makes F.dropout a
+            # no-op), concatenated (L+1)*d embedding for ranking.
+            self._user_embeddings_final, self._item_embeddings_final = self._forward_ngcf(
+                self.norm_adj)
             return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
@@ -1493,6 +1566,18 @@ class NoiseSGL(AbstractRecommender):
         self.adagcl_init_temp = float(config["adagcl_init_temp"]) if "adagcl_init_temp" in config else 2.0
         self.adagcl_temp_decay = float(config["adagcl_temp_decay"]) if "adagcl_temp_decay" in config else 0.98
         self.adagcl_eps = float(config["adagcl_eps"]) if "adagcl_eps" in config else 1e-3
+        # NGCF baseline (task #10, classic baseline, SIGIR'19 arXiv:1905.08108).
+        # ngcf=1 switches the whole forward/eval to the faithful NGCF architecture
+        # (learnable W1/W2 feature transformations + LeakyReLU + concatenation). It uses
+        # NO contrastive SSL (NGCF is a pure-BPR model); the node/message dropout defaults
+        # are the official 0.1/0.1. These REPLACE our fusion components (noise / SSL
+        # anneal / semantic), which do not apply to NGCF.
+        self.ngcf = int(config["ngcf"]) if "ngcf" in config else 0
+        assert self.ngcf in (0, 1)
+        self.ngcf_node_dropout = float(config["ngcf_node_dropout"]) if "ngcf_node_dropout" in config else 0.1
+        self.ngcf_message_dropout = float(config["ngcf_message_dropout"]) if "ngcf_message_dropout" in config else 0.1
+        assert 0.0 <= self.ngcf_node_dropout < 1.0
+        assert 0.0 <= self.ngcf_message_dropout < 1.0
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -1734,6 +1819,30 @@ class NoiseSGL(AbstractRecommender):
                 self.adagcl_zeta, self.adagcl_reg, self.adagcl_init_temp,
                 self.adagcl_temp_decay, self.adagcl_eps,
                 int(self.lightgcn.adagcl_h.shape[0])))
+        self.lightgcn.ngcf = bool(self.ngcf)
+        self.lightgcn.ngcf_node_dropout = self.ngcf_node_dropout
+        self.lightgcn.ngcf_message_dropout = self.ngcf_message_dropout
+        if self.ngcf:
+            # NGCF learnable feature-transformation matrices W1/W2 per layer ([d, d],
+            # xavier_uniform init like the official implementation), created directly on
+            # self.device (see the HCCF note: fresh modules assigned after .to(device)
+            # would stay on CPU and crash the GPU forward). W1 is used for BOTH the self
+            # message and the linear part of the neighbour message (paper eq. 6), W2 for
+            # the element-wise-product part.
+            self.lightgcn.ngcf_w1 = nn.ModuleList(
+                [nn.Linear(self.emb_size, self.emb_size).to(self.device)
+                 for _ in range(self.n_layers)])
+            self.lightgcn.ngcf_w2 = nn.ModuleList(
+                [nn.Linear(self.emb_size, self.emb_size).to(self.device)
+                 for _ in range(self.n_layers)])
+            for w1, w2 in zip(self.lightgcn.ngcf_w1, self.lightgcn.ngcf_w2):
+                nn.init.xavier_uniform_(w1.weight)
+                nn.init.xavier_uniform_(w2.weight)
+                nn.init.zeros_(w1.bias)
+                nn.init.zeros_(w2.bias)
+            self.logger.info("[ngcf] node_dropout=%.2f message_dropout=%.2f final_dim=%d (concat L+1)" % (
+                self.ngcf_node_dropout, self.ngcf_message_dropout,
+                self.emb_size * (self.n_layers + 1)))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -2356,9 +2465,9 @@ class NoiseSGL(AbstractRecommender):
                     bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
                 else:
                     bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
-                if self.hccf or self.dccf:
-                    # HCCF/DCCF official use a MEAN-scaled BPR (batch mean), matching their
-                    # mean-scaled contrast losses so the official SSL:BPR ratios hold.
+                if self.hccf or self.dccf or self.ngcf:
+                    # HCCF/DCCF/NGCF official use a MEAN-scaled BPR (batch mean), matching
+                    # their mean-scaled losses so the official SSL:BPR / BPR-only ratios hold.
                     bpr_loss = -torch.mean(F.logsigmoid(sup_logits))
 
                 # Reg Loss
@@ -2371,7 +2480,7 @@ class NoiseSGL(AbstractRecommender):
                 # InfoNCE Loss is computed inside forward() so that >=2 views can be
                 # mixed; for view_mix="nn" it is identical to the original single pair.
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
-                if self.use_mlc and not self.hccf and not self.dccf:
+                if self.use_mlc and not self.hccf and not self.dccf and not self.ngcf:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
                                                             perturb=True, eps=cur_eps)
                     layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
@@ -2424,6 +2533,12 @@ class NoiseSGL(AbstractRecommender):
                         torch.sum(self.lightgcn.item_intent.pow(2))
                     loss = bpr_loss + self.dccf_emb_reg * reg_loss + \
                         self.dccf_cen_reg * cen_loss + self.dccf_ssl_reg * infonce_loss
+                elif self.ngcf:
+                    # NGCF faithful loss (pure BPR): mean-BPR + reg * L2 on the layer-0
+                    # embedding table (the original NGCF regularises the embeddings; W1/W2
+                    # are not L2-regularised, matching the official implementation). No
+                    # InfoNCE / anneal / fcl / dau / spec (our fusion components, not NGCF's).
+                    loss = bpr_loss + self.reg * reg_loss
                 else:
                     ssl_weight = self._ssl_weight(epoch)
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
