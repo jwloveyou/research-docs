@@ -1,0 +1,14 @@
+BEGIN 2026年 10月 18日 星期日 15:03:56 CST
+START lastfm-2k_sem_sem0_lam1.0 ep=100 2026年 10月 18日 星期日 15:03:56 CST
+END   lastfm-2k_sem_sem0_lam1.0 rc=0 2026年 10月 18日 星期日 15:09:26 CST
+--- lastfm-2k_sem_sem0_lam1.0 best ---
+2026-10-18 15:09:26.116: best_result@epoch 91:
+
+2026-10-18 15:09:26.116: 		0.1449      	0.4183      	0.3658      
+START lastfm-2k_sem_sem1_lam1.0 ep=100 2026年 10月 18日 星期日 15:09:26 CST
+END   lastfm-2k_sem_sem1_lam1.0 rc=0 2026年 10月 18日 星期日 15:14:51 CST
+--- lastfm-2k_sem_sem1_lam1.0 best ---
+2026-10-18 15:14:50.823: best_result@epoch 86:
+
+2026-10-18 15:14:50.823: 		0.1456      	0.4209      	0.3683      
+START ml-1m_sem_sem0_lam1.0 ep=100 2026年 10月 18日 星期日 15:14:51 CST
