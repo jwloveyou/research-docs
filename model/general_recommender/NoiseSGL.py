@@ -267,6 +267,15 @@ class _LightGCN(nn.Module):
         self.directau_unif = 0.0
         self.directau_t = 2.0
         self.directau_k = 512
+        # R71: standalone DirectAU baseline (KDD'22, arXiv:2206.12811), task #10's last
+        # missing classic baseline. directau=True switches the whole model to the faithful
+        # DirectAU architecture: raw embedding tables (NO GCN propagation) trained with
+        # alignment (mean ||u^-i^||^2 on the unit sphere) + uniformity (log mean
+        # exp(-t*d) over all pairwise distances of sampled nodes). No BPR / no InfoNCE.
+        # Default False = off (backward compatible). directau_gamma is the paper's
+        # uniformity weight (lambda); directau_t is the uniformity temperature (t=2).
+        self.directau = False
+        self.directau_gamma = 1.0
         # Round-35: DirectSpec-style spectral balancing (ACM TORS 2025, arXiv:2406.12032
         # "Balancing Embedding Spectrum for Recommendation"). spec_bal>0 adds a static,
         # parameter-free regulariser that flattens the embedding spectrum (raises the
@@ -1459,6 +1468,12 @@ class _LightGCN(nn.Module):
             self._user_embeddings_final = self.user_embeddings.weight
             self._item_embeddings_final = self.item_embeddings.weight
             return
+        if self.directau:
+            # DirectAU standalone: NO propagation; the ranking uses the unit-normalised
+            # raw embeddings (cosine similarity, paper Section 3.2).
+            self._user_embeddings_final = F.normalize(self.user_embeddings.weight, dim=1)
+            self._item_embeddings_final = F.normalize(self.item_embeddings.weight, dim=1)
+            return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
         if self.l2_norm:
@@ -1694,6 +1709,15 @@ class NoiseSGL(AbstractRecommender):
         self.directau_unif = float(config["directau_unif"]) if "directau_unif" in config else 0.0
         self.directau_t = float(config["directau_t"]) if "directau_t" in config else 2.0
         self.directau_k = int(config["directau_k"]) if "directau_k" in config else 512
+        # R71: standalone DirectAU baseline (KDD'22, arXiv:2206.12811, task #10 last
+        # missing classic baseline). directau=1 switches forward/eval/train to the
+        # faithful DirectAU architecture (raw embeddings, NO GCN, align+uniform loss).
+        # directau_gamma is the uniformity weight (paper's lambda, default 1.0);
+        # directau_t reuses the uniformity temperature above (paper t=2). Static / no
+        # learnable structure (respects the 'static wins' law); a no-propagation baseline.
+        self.directau = int(config["directau"]) if "directau" in config else 0
+        assert self.directau in (0, 1)
+        self.directau_gamma = float(config["directau_gamma"]) if "directau_gamma" in config else 1.0
         # Round-35: DirectSpec-style spectral balancing coefficient (4th-component
         # candidate #10). 0 = off (backward compatible).
         self.spec_bal = float(config["spec_bal"]) if "spec_bal" in config else 0.0
@@ -2234,6 +2258,8 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.directau_unif = self.directau_unif
         self.lightgcn.directau_t = self.directau_t
         self.lightgcn.directau_k = self.directau_k
+        self.lightgcn.directau = bool(self.directau)
+        self.lightgcn.directau_gamma = self.directau_gamma
         self.lightgcn.spec_bal = self.spec_bal
         self.lightgcn.spec_bal_center = self.spec_bal_center
         self.lightgcn.proto_K = self.proto_K
@@ -2248,6 +2274,9 @@ class NoiseSGL(AbstractRecommender):
         if self.directau_align or self.directau_unif:
             self.logger.info("[directau] align=%.3f unif=%.3f t=%.2f k=%d" % (
                 self.directau_align, self.directau_unif, self.directau_t, self.directau_k))
+        if self.directau:
+            self.logger.info("[directau-standalone] gamma=%.2f t=%.2f (no GNN; align+uniform)" % (
+                self.directau_gamma, self.directau_t))
         self.logger.info("[view-mix] view_mix=%s (n=noise/e=edge-dropout/g=svd-global)" % self.view_mix)
         if self.agg_weights_str != "uniform":
             self.logger.info("[layer-agg] agg_weights=%s alpha=%.3f vec=%s" % (
@@ -2866,6 +2895,55 @@ class NoiseSGL(AbstractRecommender):
             total_reg += float(self.reg * reg_loss.detach())
         return total_loss, total_o, total_c, total_i, total_reg
 
+    def _directau_batch_loop(self, data_iter):
+        """DirectAU (KDD'22, arXiv:2206.12811) faithful training loop. No GCN
+        propagation, no BPR, no InfoNCE: the raw layer-0 embedding tables are trained
+        with L = L_align + gamma * L_uniform (+ reg * L2).
+
+        - alignment:  mean over the positive batch of ||u^ - i^||^2 (unit sphere).
+        - uniformity: log mean over ALL pairwise distances of exp(-t * ||x-y||^2),
+          computed separately for the sampled user batch, the positive item batch and
+          the negative item batch (official 3-group average).
+        Both terms operate on L2-normalised embeddings (the paper's 'unit hypersphere'),
+        and the ranking score is cosine similarity (see eval()).
+        """
+        total_loss = total_align = total_unif = total_reg = 0.0
+        gamma = self.directau_gamma
+        t = self.directau_t
+
+        def uniformity(x):
+            x = F.normalize(x, dim=1)
+            d = torch.pdist(x, p=2).pow(2)          # squared L2 distances, all pairs
+            return torch.log(torch.exp(-t * d).mean() + 1e-12)
+
+        for bat_users, bat_pos_items, bat_neg_items in data_iter:
+            bat_users = torch.from_numpy(bat_users).long().to(self.device)
+            bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
+            bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
+            u_emb = self.lightgcn.user_embeddings(bat_users)
+            i_emb = self.lightgcn.item_embeddings(bat_pos_items)
+            j_emb = self.lightgcn.item_embeddings(bat_neg_items)
+            u = F.normalize(u_emb, dim=1)
+            i = F.normalize(i_emb, dim=1)
+            # alignment: mean ||u^ - i^||^2 over positive pairs (unit sphere).
+            align = ((u - i) ** 2).sum(-1).mean()
+            # uniformity: 3-group average (user batch / pos item batch / neg item batch).
+            unif = (uniformity(u_emb) + uniformity(i_emb) + uniformity(j_emb)) / 3.0
+            loss = align + gamma * unif
+            reg_loss = l2_loss(
+                self.lightgcn.user_embeddings(bat_users),
+                self.lightgcn.item_embeddings(bat_pos_items),
+                self.lightgcn.item_embeddings(bat_neg_items))
+            loss = loss + self.reg * reg_loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            total_loss += float(loss.detach())
+            total_align += float(align.detach())
+            total_unif += float(unif.detach())
+            total_reg += float(self.reg * reg_loss.detach())
+        return total_loss, total_align, total_unif, total_reg
+
     def train_model(self):
         self.logger.info(self.evaluator.metrics_info())
         stopping_step = 0
@@ -2911,6 +2989,34 @@ class NoiseSGL(AbstractRecommender):
                     total_loss / self.num_ratings,
                     total_o / self.num_ratings,
                     (total_c + total_i) / self.num_ratings,
+                    total_reg / self.num_ratings,
+                    time() - training_start_time,))
+                if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
+                    result, flag = self.evaluate_model()
+                    self.logger.info("epoch %d:\t%s" % (epoch, result))
+                    if flag:
+                        self.best_epoch = epoch
+                        stopping_step = 0
+                        self.logger.info("Find a better model.")
+                    else:
+                        stopping_step += 1
+                        if stopping_step >= self.stop_cnt:
+                            self.logger.info("Early stopping is trigger at epoch: {}".format(epoch))
+                            break
+                continue
+            if self.directau:
+                # DirectAU baseline: fully separate training loop (NO GCN propagation, NO
+                # BPR/InfoNCE). L = L_align + gamma * L_uniform + reg * L2 (paper eq. 7/8).
+                total_loss, total_align, total_unif, total_reg = 0.0, 0.0, 0.0, 0.0
+                training_start_time = time()
+                self.lightgcn.train()
+                data_iter = self._pairwise_iter()
+                total_loss, total_align, total_unif, total_reg = self._directau_batch_loop(data_iter)
+                self.logger.info("[iter %d : loss : %.4f = %.4f(align) + %.4f(unif) + %.4f(reg), time: %f]" % (
+                    epoch,
+                    total_loss / self.num_ratings,
+                    total_align / self.num_ratings,
+                    total_unif / self.num_ratings,
                     total_reg / self.num_ratings,
                     time() - training_start_time,))
                 if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
