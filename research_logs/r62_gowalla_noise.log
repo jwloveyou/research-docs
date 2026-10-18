@@ -1,0 +1,146 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/gowalla/gowalla.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-18 17:27:05.061: my pid: 19497
+2026-10-18 17:27:05.061: model: model.general_recommender.NoiseSGL
+2026-10-18 17:27:05.061: Dataset statistics:
+Name: gowalla
+The number of users: 29858
+The number of items: 40981
+The number of ratings: 1027370
+Average actions of users: 34.41
+Average actions of items: 25.07
+The sparsity of the dataset: 99.916038%
+
+The number of training: 810128
+The number of validation: 0
+The number of testing: 217242
+2026-10-18 17:27:05.061: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=gowalla
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=128
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+noise_item_boost=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=30
+batch_size=1024
+num_negatives=1
+bpr_margin=0.0
+sem_emb=0
+sem_lam=1.0
+l2_norm=0
+dropout=0.0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+init_scale=1.0
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=gowalla
+gpu_id=0
+seed=42
+epochs=30
+embed_size=128
+ssl_reg=0.1
+noise_eps=0.2
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+view_mix=nn
+gate_mode=0
+use_mlc=0
+verbose=1
+stop_cnt=500
+create_adj_mat function cost: 0.121432s
+2026-10-18 17:27:08.111: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+{"dataset": "gowalla", "ssl_reg": 0.1, "embed_size": 128, "epochs": 30, "seed": 42, "n_layers": 3, "layer_smooth": [0.0014242875622585416, 0.0015700844815000892, 0.02182072401046753, 0.03652895241975784], "layer_cos_l0": [1.0, 0.926575243473053, 0.8155055046081543, 0.6340757012367249], "layer_norm": [7.969339370727539, 3.4213528633117676, 2.322479486465454, 1.5545852184295654], "spectrum": {"sv": [40.34980010986328, 34.745025634765625, 31.074220657348633, 27.376338958740234, 26.93463706970215, 25.24474334716797, 24.64752197265625, 23.497081756591797, 22.919084548950195, 22.531051635742188, 22.082584381103516, 21.756690979003906, 21.610673904418945, 21.454021453857422, 21.292030334472656, 21.14943504333496, 20.935176849365234, 20.719154357910156, 20.5847225189209, 20.47540855407715, 20.394559860229492, 20.324405670166016, 20.184755325317383, 20.083236694335938, 19.99662208557129, 19.9647216796875, 19.851696014404297, 19.780750274658203, 19.673233032226562, 19.537837982177734, 19.47269058227539, 19.448333740234375, 19.386917114257812, 19.257213592529297, 19.18136215209961, 19.128042221069336, 19.048431396484375, 19.020971298217773, 18.898509979248047, 18.88902473449707, 18.86638832092285, 18.778091430664062, 18.7105712890625, 18.68729019165039, 18.64923858642578, 18.592662811279297, 18.536352157592773, 18.4638729095459, 18.402023315429688, 18.37444305419922, 18.35017204284668, 18.304973602294922, 18.21995735168457, 18.16472816467285, 18.094722747802734, 18.03803825378418, 17.99764633178711, 17.944549560546875, 17.877220153808594, 17.855228424072266, 17.767431259155273, 17.703935623168945, 17.671070098876953, 17.59146499633789], "sv_total_energy": 44602.65234375, "topk_energy": {"top1": 0.03650245442986488, "top2": 0.06356848776340485, "top4": 0.10202071815729141, "top8": 0.15857306122779846, "top16": 0.24426016211509705, "top32": 0.38910195231437683, "top64": 0.6335464119911194}, "eff_rank": 125.71090321833348}}
+SAVED /home/Yehaikun/SGL-Torch/research_logs/viz_gowalla_noise.json

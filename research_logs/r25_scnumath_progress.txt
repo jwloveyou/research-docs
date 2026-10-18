@@ -1,0 +1,22 @@
+BEGIN Sat Oct 17 15:16:40 CST 2026
+START gowalla_drop0 gpu=6 ep=100 Sat Oct 17 15:16:40 CST 2026
+START gowalla_drop0.3 gpu=7 ep=100 Sat Oct 17 15:16:40 CST 2026
+END   gowalla_drop0.3 rc=0 Sat Oct 17 16:57:49 CST 2026
+
+2026-10-17 16:57:48.574: 		0.0580      	0.1880      	0.1598      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+START gowalla_drop0.5 gpu=7 ep=100 Sat Oct 17 16:57:49 CST 2026
+END   gowalla_drop0 rc=0 Sat Oct 17 16:58:11 CST 2026
+
+2026-10-17 16:58:10.942: 		0.0580      	0.1880      	0.1598      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+START gowalla_drop0.1 gpu=6 ep=100 Sat Oct 17 16:58:11 CST 2026
+END   gowalla_drop0.5 rc=0 Sat Oct 17 18:38:45 CST 2026
+
+2026-10-17 18:38:44.154: 		0.0580      	0.1880      	0.1598      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+END   gowalla_drop0.1 rc=0 Sat Oct 17 18:39:24 CST 2026
+
+2026-10-17 18:39:24.073: 		0.0580      	0.1880      	0.1598      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/gowalla/gowalla.valid does not exist.
+ALLDONE Sat Oct 17 18:39:24 CST 2026

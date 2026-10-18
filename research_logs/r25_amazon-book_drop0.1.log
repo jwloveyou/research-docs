@@ -1,0 +1,141 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-17 18:37:47.566: my pid: 130653
+2026-10-17 18:37:47.566: model: model.general_recommender.NoiseSGL
+2026-10-17 18:37:47.566: Dataset statistics:
+Name: amazon-book
+The number of users: 52643
+The number of items: 91599
+The number of ratings: 2984108
+Average actions of users: 56.69
+Average actions of items: 32.58
+The sparsity of the dataset: 99.938115%
+
+The number of training: 2380730
+The number of validation: 0
+The number of testing: 603378
+2026-10-17 18:37:47.566: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=amazon-book
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=256
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+lr=0.001
+learner=adam
+adj_type=pre
+epochs=12
+batch_size=1024
+num_negatives=1
+l2_norm=0
+dropout=0.1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=amazon-book
+seed=42
+epochs=12
+verbose=1
+stop_cnt=500
+embed_size=256
+view_mix=nn
+use_mlc=0
+noise_eps=0.2
+ssl_reg=0.1
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+l2_norm=0
+dropout=0.1
+gpu_id=0
+create_adj_mat function cost: 0.290894s
+2026-10-17 18:37:52.503: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-17 18:37:53.344: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-17 18:45:16.399: [iter 1 : loss : 1.7456 = 0.4688 + 1.2760 + 0.0008, time: 443.053998]
+2026-10-17 18:45:47.605: epoch 1:	0.01723089  	0.04045274  	0.03236848  
+2026-10-17 18:45:47.606: Find a better model.
+2026-10-17 18:53:11.178: [iter 2 : loss : 1.4010 = 0.1256 + 1.2724 + 0.0030, time: 443.369332]
+2026-10-17 18:53:43.030: epoch 2:	0.01835725  	0.04392579  	0.03464114  
+2026-10-17 18:53:43.031: Find a better model.
+2026-10-17 19:01:07.076: [iter 3 : loss : 1.3022 = 0.0581 + 1.2394 + 0.0047, time: 443.860661]
+2026-10-17 19:01:34.968: epoch 3:	0.01935351  	0.04707701  	0.03671559  
+2026-10-17 19:01:34.968: Find a better model.
+2026-10-17 19:08:58.217: [iter 4 : loss : 1.2469 = 0.0351 + 1.2057 + 0.0061, time: 443.000520]
+2026-10-17 19:09:30.128: epoch 4:	0.02007373  	0.04917638  	0.03826727  
+2026-10-17 19:09:30.128: Find a better model.
+2026-10-17 19:16:54.181: [iter 5 : loss : 1.2015 = 0.0241 + 1.1700 + 0.0074, time: 443.815793]
+2026-10-17 19:17:26.413: epoch 5:	0.02060965  	0.05086664  	0.03960278  
+2026-10-17 19:17:26.414: Find a better model.
+2026-10-17 19:24:50.526: [iter 6 : loss : 1.1570 = 0.0180 + 1.1307 + 0.0084, time: 443.856700]
+2026-10-17 19:25:22.489: epoch 6:	0.02094983  	0.05200306  	0.04048469  
+2026-10-17 19:25:22.490: Find a better model.
+2026-10-17 19:32:46.589: [iter 7 : loss : 1.1105 = 0.0141 + 1.0872 + 0.0093, time: 443.843131]
+2026-10-17 19:33:18.695: epoch 7:	0.02127290  	0.05292371  	0.04122707  
+2026-10-17 19:33:18.696: Find a better model.
+2026-10-17 19:40:42.576: [iter 8 : loss : 1.0612 = 0.0117 + 1.0394 + 0.0100, time: 443.682393]
+2026-10-17 19:41:14.919: epoch 8:	0.02151234  	0.05377736  	0.04177858  
+2026-10-17 19:41:14.919: Find a better model.
+2026-10-17 19:48:38.441: [iter 9 : loss : 1.0083 = 0.0099 + 0.9877 + 0.0106, time: 443.297907]
+2026-10-17 19:49:10.685: epoch 9:	0.02155129  	0.05405845  	0.04207012  
+2026-10-17 19:49:10.686: Find a better model.
+2026-10-17 19:56:34.510: [iter 10 : loss : 0.9523 = 0.0088 + 0.9324 + 0.0111, time: 443.586015]
+2026-10-17 19:57:06.748: epoch 10:	0.02163203  	0.05440288  	0.04228956  
+2026-10-17 19:57:06.749: Find a better model.
+2026-10-17 20:04:30.475: [iter 11 : loss : 0.8933 = 0.0079 + 0.8740 + 0.0115, time: 443.497176]
+2026-10-17 20:05:02.921: epoch 11:	0.02167954  	0.05457521  	0.04240329  
+2026-10-17 20:05:02.922: Find a better model.
+2026-10-17 20:12:25.672: [iter 12 : loss : 0.8318 = 0.0071 + 0.8129 + 0.0117, time: 442.520920]
+2026-10-17 20:12:58.107: epoch 12:	0.02168810  	0.05467849  	0.04236388  
+2026-10-17 20:12:58.108: Find a better model.
+2026-10-17 20:12:58.108: best_result@epoch 12:
+
+2026-10-17 20:12:58.108: 		0.0217      	0.0547      	0.0424      

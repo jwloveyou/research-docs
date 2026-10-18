@@ -1,0 +1,149 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/lastfm-2k/lastfm-2k.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-18 21:48:06.960: my pid: 92056
+2026-10-18 21:48:06.960: model: model.general_recommender.NoiseSGL
+2026-10-18 21:48:06.960: Dataset statistics:
+Name: lastfm-2k
+The number of users: 1797
+The number of items: 1507
+The number of ratings: 62376
+Average actions of users: 34.71
+Average actions of items: 41.39
+The sparsity of the dataset: 97.696670%
+
+The number of training: 49900
+The number of validation: 0
+The number of testing: 12476
+2026-10-18 21:48:06.960: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=lastfm-2k
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=128
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+noise_item_boost=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+ngcf=0
+ngcf_node_dropout=0.1
+ngcf_message_dropout=0.1
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=30
+batch_size=1024
+num_negatives=1
+bpr_margin=0.0
+sem_emb=0
+sem_lam=1.0
+l2_norm=0
+dropout=0.0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+init_scale=1.0
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=lastfm-2k
+gpu_id=0
+seed=42
+epochs=30
+embed_size=128
+ssl_reg=0.1
+noise_eps=0.2
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+view_mix=nn
+gate_mode=0
+use_mlc=0
+verbose=1
+stop_cnt=500
+create_adj_mat function cost: 0.007465s
+2026-10-18 21:48:07.508: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+{"dataset": "lastfm-2k", "ssl_reg": 0.1, "embed_size": 128, "epochs": 30, "seed": 42, "n_layers": 3, "layer_smooth": [0.05221309885382652, 0.07824736088514328, 0.31915774941444397, 0.2772471606731415], "layer_cos_l0": [1.0, 0.9263861179351807, 0.7708526849746704, 0.7262622714042664], "layer_norm": [4.101245403289795, 1.871435284614563, 1.6415445804595947, 0.9358125329017639], "spectrum": {"sv": [52.36404800415039, 48.291683197021484, 40.69338607788086, 35.1070442199707, 27.55535125732422, 23.441143035888672, 18.91609764099121, 16.71912956237793, 15.621326446533203, 14.025728225708008, 13.61005973815918, 12.581767082214355, 12.392781257629395, 11.65194320678711, 11.20333480834961, 10.784965515136719, 10.47060489654541, 10.369434356689453, 9.916069030761719, 9.674574851989746, 9.258169174194336, 8.901028633117676, 8.866494178771973, 8.547428131103516, 8.29382610321045, 8.215161323547363, 8.046307563781738, 7.834030628204346, 7.649585247039795, 7.6366448402404785, 7.522828578948975, 7.2945942878723145, 7.194366455078125, 7.151216983795166, 7.0113749504089355, 6.864892959594727, 6.803130149841309, 6.738880157470703, 6.652968883514404, 6.585904121398926, 6.527502536773682, 6.492485046386719, 6.328855037689209, 6.306964874267578, 6.270271301269531, 6.150296211242676, 6.08065938949585, 6.0555572509765625, 6.0183491706848145, 5.944994926452637, 5.896407604217529, 5.873131275177002, 5.846026420593262, 5.796270847320557, 5.713232040405273, 5.67328405380249, 5.584008693695068, 5.550327777862549, 5.516486644744873, 5.500617027282715, 5.471091270446777, 5.41306209564209, 5.394144535064697, 5.341630935668945], "sv_total_energy": 14785.615234375002, "topk_energy": {"top1": 0.18545007705688477, "top2": 0.34317678213119507, "top4": 0.5385326147079468, "top8": 0.6701560020446777, "top16": 0.7591249942779541, "top32": 0.8412810564041138, "top64": 0.9229050874710083}, "eff_rank": 95.23058078453408}}
+SAVED /home/Yehaikun/SGL-Torch/research_logs/viz_lastfm_noise.json

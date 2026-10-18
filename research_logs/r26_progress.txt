@@ -1,0 +1,23 @@
+BEGIN Sat Oct 17 20:21:19 CST 2026
+START douban-book_lgn gpu=6 ep=200 ssl=0 Sat Oct 17 20:21:19 CST 2026
+START ifashion_fusion gpu=7 ep=20 ssl=0.1 Sat Oct 17 20:21:19 CST 2026
+START douban-book_fusion gpu=4 ep=200 ssl=0.1 Sat Oct 17 20:21:19 CST 2026
+END   douban-book_lgn rc=0 Sat Oct 17 21:20:58 CST 2026
+--- douban-book_lgn best ---
+2026-10-17 21:20:58.317: best_result@epoch 199:
+
+2026-10-17 21:20:58.317: 		0.0767      	0.1897      	0.1631      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/douban-book/douban-book.valid does not exist.
+START tmall_lgn gpu=6 ep=150 ssl=0 Sat Oct 17 21:20:58 CST 2026
+END   douban-book_fusion rc=0 Sat Oct 17 21:31:48 CST 2026
+--- douban-book_fusion best ---
+2026-10-17 21:31:47.255: best_result@epoch 200:
+
+2026-10-17 21:31:47.255: 		0.0817      	0.1984      	0.1735      
+/home/zhangxu/SGL-Torch/data/dataset.py:317: UserWarning: /home/zhangxu/SGL-Torch/dataset/douban-book/douban-book.valid does not exist.
+START tmall_fusion gpu=4 ep=150 ssl=0.1 Sat Oct 17 21:31:48 CST 2026
+END   tmall_fusion rc=143 Sat Oct 17 22:00:08 CST 2026
+--- tmall_fusion best ---
+END   tmall_lgn rc=143 Sat Oct 17 22:00:08 CST 2026
+--- tmall_lgn best ---
+START tmall_fusion gpu=6 ep=40 ssl=0.1 Sat Oct 17 22:00:46 CST 2026

@@ -1,0 +1,5 @@
+BEGIN 2026年 10月 18日 星期日 21:33:40 CST
+PLOT gowalla 2026年 10月 18日 星期日 21:48:10 CST
+SAVED /home/Yehaikun/SGL-Torch/research_logs/embedding_viz_gowalla.svg
+DONE gowalla rc=0 2026年 10月 18日 星期日 21:48:10 CST
+ALLDONE 2026年 10月 18日 星期日 22:16:31 CST

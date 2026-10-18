@@ -1,0 +1,163 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/ml-1m/ml-1m.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/ml-1m/ml-1m.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/ml-1m/ml-1m.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-18 16:36:50.775: my pid: 96319
+2026-10-18 16:36:50.775: model: model.general_recommender.NoiseSGL
+2026-10-18 16:36:50.775: Dataset statistics:
+Name: ml-1m
+The number of users: 6040
+The number of items: 3260
+The number of ratings: 998539
+Average actions of users: 165.32
+Average actions of items: 306.30
+The sparsity of the dataset: 94.928803%
+
+The number of training: 798831
+The number of validation: 0
+The number of testing: 199708
+2026-10-18 16:36:50.775: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=ml-1m
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=1024
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-4
+embed_size=128
+n_layers=3
+ssl_reg=0.1
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=0
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=40
+batch_size=1024
+num_negatives=1
+bpr_margin=0.0
+sem_emb=0
+sem_lam=1.0
+l2_norm=0
+dropout=0.0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+stddev=0.01
+verbose=1
+stop_cnt=500
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=ml-1m
+gpu_id=0
+seed=42
+epochs=40
+embed_size=128
+ssl_reg=0.1
+noise_eps=0.2
+ssl_anneal=2
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=30
+view_mix=nn
+gate_mode=0
+use_mlc=0
+verbose=1
+stop_cnt=500
+create_adj_mat function cost: 0.115759s
+2026-10-18 16:36:51.850: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+{"epoch": 2, "eps": 0.2, "bpr": 686.9326076238927, "ssl": 7245.926353151758, "reg": 4344.453110307799, "gnorm": 1.634746829418206, "smooth_final": 0.009999895468354225, "smooth_layer0": 0.01210589800029993, "cos_l0_lL": -0.006046863738447428, "norm_u_mean": 0.49466902017593384, "norm_u_std": 0.06878126412630081, "norm_i_mean": 0.45844778418540955, "eff_rank": 124.51220703125, "sv_max": 7.874325275421143, "sv_sqsum": 1015.0673828125}
+{"epoch": 4, "eps": 0.2, "bpr": 486.20058571086497, "ssl": 7579.786277858915, "reg": 29957.70340946603, "gnorm": 2.814111629313512, "smooth_final": 0.043524034321308136, "smooth_layer0": 0.0237199105322361, "cos_l0_lL": 0.33315718173980713, "norm_u_mean": 1.1435149908065796, "norm_u_std": 0.2368941754102707, "norm_i_mean": 1.1000207662582397, "eff_rank": 116.9935531616211, "sv_max": 26.765439987182617, "sv_sqsum": 6035.796875}
+{"epoch": 6, "eps": 0.2, "bpr": 273.38840572049463, "ssl": 7861.663702384763, "reg": 74870.74272517205, "gnorm": 2.842455978253976, "smooth_final": 0.044513482600450516, "smooth_layer0": 0.017771990969777107, "cos_l0_lL": 0.4229515790939331, "norm_u_mean": 1.6725144386291504, "norm_u_std": 0.276660680770874, "norm_i_mean": 1.7025659084320068, "eff_rank": 115.22928619384766, "sv_max": 36.08846664428711, "sv_sqsum": 13065.4228515625}
+{"epoch": 8, "eps": 0.2, "bpr": 190.88873161579673, "ssl": 7804.624673958167, "reg": 112338.12362831106, "gnorm": 2.781496015662083, "smooth_final": 0.03555283695459366, "smooth_layer0": 0.012012941762804985, "cos_l0_lL": 0.38897112011909485, "norm_u_mean": 2.003542423248291, "norm_u_std": 0.29112210869789124, "norm_i_mean": 2.09900164604187, "eff_rank": 115.77359008789062, "sv_max": 39.830360412597656, "sv_sqsum": 18446.77734375}
+{"epoch": 10, "eps": 0.2, "bpr": 151.42117769434265, "ssl": 7729.081626980009, "reg": 141873.86761763765, "gnorm": 2.1061875738746525, "smooth_final": 0.030920060351490974, "smooth_layer0": 0.00952762272208929, "cos_l0_lL": 0.3600584864616394, "norm_u_mean": 2.2412352561950684, "norm_u_std": 0.3072401285171509, "norm_i_mean": 2.3812813758850098, "eff_rank": 116.47260284423828, "sv_max": 43.90617752075195, "sv_sqsum": 23520.083984375}
+{"epoch": 12, "eps": 0.2, "bpr": 128.94176842278006, "ssl": 7675.870619145001, "reg": 165583.82639944783, "gnorm": 2.4600377935902396, "smooth_final": 0.02654392272233963, "smooth_layer0": 0.00689857779070735, "cos_l0_lL": 0.3391040563583374, "norm_u_mean": 2.4267945289611816, "norm_u_std": 0.3268890380859375, "norm_i_mean": 2.596144914627075, "eff_rank": 117.2345199584961, "sv_max": 45.40927505493164, "sv_sqsum": 27078.853515625}
+{"epoch": 14, "eps": 0.2, "bpr": 112.93114246021618, "ssl": 7648.659931490577, "reg": 184481.62137383962, "gnorm": 2.86830454174829, "smooth_final": 0.02483021654188633, "smooth_layer0": 0.006291516590863466, "cos_l0_lL": 0.3217238783836365, "norm_u_mean": 2.581240653991699, "norm_u_std": 0.34539467096328735, "norm_i_mean": 2.7666354179382324, "eff_rank": 117.86600494384766, "sv_max": 47.9556999206543, "sv_sqsum": 30493.6875}
+{"epoch": 16, "eps": 0.2, "bpr": 102.23056214414395, "ssl": 7638.941044806213, "reg": 199723.062762584, "gnorm": 2.6814849875031848, "smooth_final": 0.024878302589058876, "smooth_layer0": 0.006285644602030516, "cos_l0_lL": 0.31098073720932007, "norm_u_mean": 2.710419178009033, "norm_u_std": 0.3637351095676422, "norm_i_mean": 2.905895233154297, "eff_rank": 118.35971069335938, "sv_max": 48.40749740600586, "sv_sqsum": 33058.8125}
+{"epoch": 18, "eps": 0.2, "bpr": 93.63317016572256, "ssl": 7643.541100105159, "reg": 211580.693371879, "gnorm": 1.2575324084312915, "smooth_final": 0.026853101328015327, "smooth_layer0": 0.006880934350192547, "cos_l0_lL": 0.3060101270675659, "norm_u_mean": 2.821552038192749, "norm_u_std": 0.3793129622936249, "norm_i_mean": 3.0243606567382812, "eff_rank": 118.57544708251953, "sv_max": 52.334903717041016, "sv_sqsum": 36300.71875}
+{"epoch": 20, "eps": 0.2, "bpr": 87.5475734290637, "ssl": 7663.531634498039, "reg": 220725.75137794093, "gnorm": 2.986994168222543, "smooth_final": 0.028980938717722893, "smooth_layer0": 0.00729763600975275, "cos_l0_lL": 0.3015648126602173, "norm_u_mean": 2.917323350906372, "norm_u_std": 0.38978591561317444, "norm_i_mean": 3.1240203380584717, "eff_rank": 118.60377502441406, "sv_max": 53.922298431396484, "sv_sqsum": 38356.1953125}
+{"epoch": 22, "eps": 0.2, "bpr": 82.13536171907042, "ssl": 7690.063814092385, "reg": 227104.91930917895, "gnorm": 2.3030403587492145, "smooth_final": 0.030022740364074707, "smooth_layer0": 0.007598461117595434, "cos_l0_lL": 0.3002958297729492, "norm_u_mean": 2.9998419284820557, "norm_u_std": 0.3962222933769226, "norm_i_mean": 3.2099459171295166, "eff_rank": 118.72701263427734, "sv_max": 56.50550842285156, "sv_sqsum": 40755.625}
+{"epoch": 24, "eps": 0.2, "bpr": 78.43080603908486, "ssl": 7730.243479397783, "reg": 231205.30215669013, "gnorm": 2.1085465393773974, "smooth_final": 0.033966004848480225, "smooth_layer0": 0.00886485818773508, "cos_l0_lL": 0.30032527446746826, "norm_u_mean": 3.069148540496826, "norm_u_std": 0.3989764451980591, "norm_i_mean": 3.2843198776245117, "eff_rank": 118.64347839355469, "sv_max": 58.5607795715332, "sv_sqsum": 42610.78125}
+{"epoch": 26, "eps": 0.2, "bpr": 75.065352545505, "ssl": 7773.351891355233, "reg": 233848.56907710468, "gnorm": 2.832181308322449, "smooth_final": 0.038400810211896896, "smooth_layer0": 0.010452424176037312, "cos_l0_lL": 0.3023899495601654, "norm_u_mean": 3.1289427280426025, "norm_u_std": 0.3978714644908905, "norm_i_mean": 3.3497633934020996, "eff_rank": 118.86097717285156, "sv_max": 59.41651916503906, "sv_sqsum": 43697.17578125}
+{"epoch": 28, "eps": 0.2, "bpr": 72.7763606796802, "ssl": 7819.826976976383, "reg": 235094.4501315421, "gnorm": 1.724923093435888, "smooth_final": 0.041088368743658066, "smooth_layer0": 0.012008704245090485, "cos_l0_lL": 0.3033072352409363, "norm_u_mean": 3.178380250930786, "norm_u_std": 0.3951072692871094, "norm_i_mean": 3.406261444091797, "eff_rank": 118.76251983642578, "sv_max": 61.15699005126953, "sv_sqsum": 45156.83984375}
+{"epoch": 30, "eps": 0.2, "bpr": 71.55570462479633, "ssl": 7849.90654189028, "reg": 235364.33574493838, "gnorm": 1.718983200898784, "smooth_final": 0.04406779631972313, "smooth_layer0": 0.013097686693072319, "cos_l0_lL": 0.3040178418159485, "norm_u_mean": 3.219727039337158, "norm_u_std": 0.39315566420555115, "norm_i_mean": 3.4539778232574463, "eff_rank": 118.69361877441406, "sv_max": 63.67630386352539, "sv_sqsum": 47140.265625}
+{"epoch": 32, "eps": 0.2, "bpr": 69.55861305549416, "ssl": 7870.999908642641, "reg": 235503.2881372039, "gnorm": 2.397119165987418, "smooth_final": 0.04367499426007271, "smooth_layer0": 0.014088551513850689, "cos_l0_lL": 0.30347779393196106, "norm_u_mean": 3.256974935531616, "norm_u_std": 0.3903004825115204, "norm_i_mean": 3.496454954147339, "eff_rank": 118.86579895019531, "sv_max": 62.747798919677734, "sv_sqsum": 46948.8515625}
+{"epoch": 34, "eps": 0.2, "bpr": 68.35495411510199, "ssl": 7887.658863023667, "reg": 235504.179424916, "gnorm": 2.433472093018094, "smooth_final": 0.046454623341560364, "smooth_layer0": 0.015021736733615398, "cos_l0_lL": 0.3013080656528473, "norm_u_mean": 3.289982795715332, "norm_u_std": 0.3875943720340729, "norm_i_mean": 3.5338234901428223, "eff_rank": 118.82726287841797, "sv_max": 65.29630279541016, "sv_sqsum": 48766.3359375}
+{"epoch": 36, "eps": 0.2, "bpr": 66.9777662751006, "ssl": 7904.6074239069, "reg": 235503.01230893887, "gnorm": 1.666554979714737, "smooth_final": 0.04719395563006401, "smooth_layer0": 0.015935368835926056, "cos_l0_lL": 0.30152252316474915, "norm_u_mean": 3.3212931156158447, "norm_u_std": 0.3853124678134918, "norm_i_mean": 3.5670793056488037, "eff_rank": 118.95209503173828, "sv_max": 66.4672622680664, "sv_sqsum": 48943.59375}
+{"epoch": 38, "eps": 0.2, "bpr": 65.85343473241515, "ssl": 7916.920835604894, "reg": 235559.84938680378, "gnorm": 2.627374437999697, "smooth_final": 0.04955337196588516, "smooth_layer0": 0.01750163361430168, "cos_l0_lL": 0.2987205982208252, "norm_u_mean": 3.3503334522247314, "norm_u_std": 0.38265693187713623, "norm_i_mean": 3.5971875190734863, "eff_rank": 119.14112854003906, "sv_max": 65.7918472290039, "sv_sqsum": 49796.3671875}
+{"epoch": 40, "eps": 0.2, "bpr": 64.40305628880343, "ssl": 7930.872553435849, "reg": 235490.87877370758, "gnorm": 1.9819127523675535, "smooth_final": 0.05178873613476753, "smooth_layer0": 0.018067188560962677, "cos_l0_lL": 0.29716256260871887, "norm_u_mean": 3.3791675567626953, "norm_u_std": 0.37924936413764954, "norm_i_mean": 3.625915050506592, "eff_rank": 119.23649597167969, "sv_max": 65.60881805419922, "sv_sqsum": 50273.80078125}
+DONE /home/Yehaikun/SGL-Torch/research_logs/mech_r55_ml1m_noise.jsonl

@@ -1,0 +1,2 @@
+BEGIN 2026年 10月 18日 星期日 21:41:32 CST
+START ml-1m_lgn_reg0 eps=0.2 reg=0.0 ep=100 2026年 10月 18日 星期日 21:41:32 CST

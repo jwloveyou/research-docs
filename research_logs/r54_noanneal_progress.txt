@@ -1,0 +1,2 @@
+BEGIN 2026年 10月 18日 星期日 15:53:16 CST
+START gowalla_noanneal_s42 gpu=0 ep=100 ssl=0.1 anneal=0 2026年 10月 18日 星期日 15:53:16 CST
