@@ -321,6 +321,25 @@ class _LightGCN(nn.Module):
         self.ngcf_message_dropout = 0.1
         self.ngcf_w1 = None   # nn.ModuleList of per-layer W1 ([d, d])
         self.ngcf_w2 = None   # nn.ModuleList of per-layer W2 ([d, d])
+        # UltraGCN baseline (CIKM'21, arXiv:2110.15114). ultragcn=False keeps the
+        # NoiseSGL backbone (backward compatible); ultragcn=True switches to the
+        # faithful UltraGCN architecture for the classic-baseline same-protocol
+        # comparison (task #10): NO message passing at all -- the layer-0 embeddings
+        # are trained directly via a BCE-style loss that approximates the limit of
+        # infinite-layer LightGCN through the constraint loss L_C (paper eq. 11/12),
+        # plus the item-item co-occurrence constraint L_I (paper eq. 17). This is the
+        # strongest 'static/parameter-free' baseline: like our fusion model it has NO
+        # learnable structural parameters, yet it abandons propagation entirely -- a
+        # clean counterfactual that isolates whether the LightGCN propagation itself
+        # (the operator our fusion keeps) is still needed. ultragcn_lambda/gamma are
+        # the paper's lambda/gamma weights (default 1.0/1.0); ultragcn_ii_neighbor is
+        # the top-K item neighbours K (paper Section 3.2, default 10).
+        self.ultragcn = False
+        self.ultragcn_lambda = 1.0
+        self.ultragcn_gamma = 1.0
+        self.ultragcn_ii_neighbor = 10
+        self.ultragcn_ii_neighbors = None   # [num_items, K] LongTensor (on device)
+        self.ultragcn_ii_weights = None     # [num_items, K] FloatTensor (on device)
 
         # # weight initialization
         # self.reset_parameters()
@@ -1185,6 +1204,12 @@ class _LightGCN(nn.Module):
             self._user_embeddings_final, self._item_embeddings_final = self._forward_ngcf(
                 self.norm_adj)
             return
+        if self.ultragcn:
+            # UltraGCN: NO propagation -- the ranking uses the raw layer-0 embeddings
+            # directly (paper Section 3.3.2: y_ui = e_u^T e_i).
+            self._user_embeddings_final = self.user_embeddings.weight
+            self._item_embeddings_final = self.item_embeddings.weight
+            return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
         if self.l2_norm:
@@ -1578,6 +1603,22 @@ class NoiseSGL(AbstractRecommender):
         self.ngcf_message_dropout = float(config["ngcf_message_dropout"]) if "ngcf_message_dropout" in config else 0.1
         assert 0.0 <= self.ngcf_node_dropout < 1.0
         assert 0.0 <= self.ngcf_message_dropout < 1.0
+        # UltraGCN baseline (task #10, classic baseline, CIKM'21 arXiv:2110.15114).
+        # ultragcn=1 switches the whole forward/eval/train to the faithful UltraGCN
+        # architecture: NO GCN propagation; the layer-0 embeddings are trained directly
+        # with L = L_O + lambda*L_C + gamma*L_I (paper eq. 14/18), where L_O is the
+        # pointwise BCE over positive/negative user-item pairs, L_C is the degree-weighted
+        # constraint loss with beta_{u,i} = (1/d_u)*sqrt((d_u+1)/(d_i+1)), and L_I is the
+        # item-item co-occurrence constraint over the top-K most similar items S(i) with
+        # omega_{i,j} = (G_{i,j}/(g_i-G_{i,i}))*sqrt(g_i/g_j) (paper eq. 16/17). This
+        # REPLACES our fusion components (noise / SSL anneal / semantic / GCN layers),
+        # which do not apply to UltraGCN. Defaults follow the paper's primary setup.
+        self.ultragcn = int(config["ultragcn"]) if "ultragcn" in config else 0
+        assert self.ultragcn in (0, 1)
+        self.ultragcn_lambda = float(config["ultragcn_lambda"]) if "ultragcn_lambda" in config else 1.0
+        self.ultragcn_gamma = float(config["ultragcn_gamma"]) if "ultragcn_gamma" in config else 1.0
+        self.ultragcn_ii_neighbor = int(config["ultragcn_ii_neighbor"]) if "ultragcn_ii_neighbor" in config else 10
+        assert self.ultragcn_ii_neighbor >= 1
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -1843,6 +1884,24 @@ class NoiseSGL(AbstractRecommender):
             self.logger.info("[ngcf] node_dropout=%.2f message_dropout=%.2f final_dim=%d (concat L+1)" % (
                 self.ngcf_node_dropout, self.ngcf_message_dropout,
                 self.emb_size * (self.n_layers + 1)))
+        self.lightgcn.ultragcn = bool(self.ultragcn)
+        self.lightgcn.ultragcn_lambda = self.ultragcn_lambda
+        self.lightgcn.ultragcn_gamma = self.ultragcn_gamma
+        self.lightgcn.ultragcn_ii_neighbor = self.ultragcn_ii_neighbor
+        if self.ultragcn:
+            # Precompute the degree factors for beta_{u,i} = (1/d_u)*sqrt((d_u+1)/(d_i+1))
+            # = fu[u] * fi[i] with fu = sqrt(d_u+1)/d_u and fi = 1/sqrt(d_i+1). These live
+            # on the device so each batch is a cheap gather. user_degree/item_degree are
+            # already computed from train_csr_mat earlier in __init__.
+            fu = np.sqrt(user_degree + 1.0) / np.maximum(user_degree, 1.0)
+            fi = 1.0 / np.sqrt(item_degree + 1.0)
+            self.lightgcn.ultragcn_fu = torch.from_numpy(fu.astype(np.float32)).to(self.device)
+            self.lightgcn.ultragcn_fi = torch.from_numpy(fi.astype(np.float32)).to(self.device)
+            ii_neighbors, ii_weights = self._build_ultragcn_ii()
+            self.lightgcn.ultragcn_ii_neighbors = torch.from_numpy(ii_neighbors).long().to(self.device)
+            self.lightgcn.ultragcn_ii_weights = torch.from_numpy(ii_weights).float().to(self.device)
+            self.logger.info("[ultragcn] lambda=%.2f gamma=%.2f ii_neighbor=%d" % (
+                self.ultragcn_lambda, self.ultragcn_gamma, self.ultragcn_ii_neighbor))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -2361,6 +2420,105 @@ class NoiseSGL(AbstractRecommender):
             total_reg += float(reg.detach())
         return total_loss, total_bpr, total_reg
 
+    def _build_ultragcn_ii(self):
+        """Precompute the UltraGCN item-item co-occurrence constraint (paper eq. 15-17).
+
+        G = A^T A is the item-item co-occurrence count matrix; g_i = sum_k G_{i,k} is the
+        degree of item i in G; omega_{i,j} = (G_{i,j} / (g_i - G_{i,i})) * sqrt(g_i / g_j).
+        For each item i we select the top-K items j (j != i) by omega_{i,j} and store the
+        neighbour indices and the omega weights. omega_{i,j} = G_{i,j} * alpha_i * beta_j
+        with alpha_i = sqrt(g_i)/(g_i-G_{i,i}) and beta_j = 1/sqrt(g_j), so the top-K
+        selection can be done by sorting G_{i,j}*beta_j (alpha_i is a per-row constant).
+        Isolated items (g_i == G_{i,i}, i.e. no co-occurrence) get an all-invalid row.
+        """
+        t0 = time()
+        A = self.dataset.train_csr_mat                       # (num_users, num_items) csr
+        AtA = (A.T @ A).tocsr()                              # (num_items, num_items)
+        n_items = int(self.num_items)
+        K = int(self.ultragcn_ii_neighbor)
+        g = np.asarray(AtA.sum(axis=1)).reshape(-1).astype(np.float64)
+        diag = AtA.diagonal().astype(np.float64)
+        denom = g - diag                                     # g_i - G_{i,i}
+        beta_j = 1.0 / np.sqrt(g + 1e-12)
+        alpha_i = np.sqrt(g + 1e-12) / (denom + 1e-12)
+        neighbors = np.full((n_items, K), -1, dtype=np.int64)
+        weights = np.zeros((n_items, K), dtype=np.float32)
+        lil = AtA.tolil()
+        for i in range(n_items):
+            r = lil.rows[i]
+            if not r:
+                continue
+            r = np.asarray(r, dtype=np.int64)
+            d = np.asarray(lil.data[i], dtype=np.float64)
+            keep = r != i
+            if not np.any(keep):
+                continue
+            r = r[keep]
+            d = d[keep]
+            w = d * alpha_i[i] * beta_j[r]
+            k = int(min(K, len(r)))
+            if k >= len(r):
+                top = np.argsort(-w)
+            else:
+                part = np.argpartition(-w, k - 1)[:k]
+                top = part[np.argsort(-w[part])]
+            neighbors[i, :k] = r[top]
+            weights[i, :k] = w[top].astype(np.float32)
+        self.logger.info("[ultragcn] item-item graph nnz=%d topK=%d valid_pairs=%d time=%.1fs" % (
+            int(AtA.nnz), K, int((neighbors >= 0).sum()), time() - t0))
+        return neighbors, weights
+
+    def _ultragcn_batch_loop(self, data_iter):
+        """UltraGCN faithful training loop (paper eq. 12/13/17/18). L = L_O + lambda*L_C
+        + gamma*L_I (+ reg*L2). All three losses are the unified pointwise BCE form and are
+        mean-scaled over the batch (consistent with the other BCE baselines in this repo).
+        Returns (total_loss, total_O, total_C, total_I, total_reg) for the epoch log line.
+        """
+        total_loss = total_o = total_c = total_i = total_reg = 0.0
+        fu = self.lightgcn.ultragcn_fu
+        fi = self.lightgcn.ultragcn_fi
+        ii_nb = self.lightgcn.ultragcn_ii_neighbors
+        ii_wt = self.lightgcn.ultragcn_ii_weights
+        for bat_users, bat_pos_items, bat_neg_items in data_iter:
+            bat_users = torch.from_numpy(bat_users).long().to(self.device)
+            bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
+            bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
+            u_emb = self.lightgcn.user_embeddings(bat_users)
+            i_emb = self.lightgcn.item_embeddings(bat_pos_items)
+            j_emb = self.lightgcn.item_embeddings(bat_neg_items)
+            pos = (u_emb * i_emb).sum(-1)
+            neg = (u_emb * j_emb).sum(-1)
+            # L_O: pointwise BCE over observed + sampled-negative pairs (paper eq. 13).
+            loss_o = -torch.mean(F.logsigmoid(pos) + F.logsigmoid(-neg))
+            # L_C: degree-weighted constraint loss (paper eq. 12),
+            # beta_{u,i} = (1/d_u)*sqrt((d_u+1)/(d_i+1)) = fu[u]*fi[i].
+            beta_pos = fu[bat_users] * fi[bat_pos_items]
+            beta_neg = fu[bat_users] * fi[bat_neg_items]
+            loss_c = -torch.mean(beta_pos * F.logsigmoid(pos) + beta_neg * F.logsigmoid(-neg))
+            # L_I: item-item co-occurrence constraint (paper eq. 17).
+            nb = ii_nb[bat_pos_items]                                  # [B, K]
+            wt = ii_wt[bat_pos_items]                                  # [B, K]
+            nb_safe = nb.clamp(min=0)
+            nb_emb = self.lightgcn.item_embeddings(nb_safe)            # [B, K, d]
+            nb_score = (u_emb.unsqueeze(1) * nb_emb).sum(-1)           # [B, K]
+            mask = (nb >= 0).float() * (wt > 0).float()
+            loss_i = -torch.mean(mask * wt * F.logsigmoid(nb_score))
+            loss = loss_o + self.ultragcn_lambda * loss_c + self.ultragcn_gamma * loss_i
+            reg_loss = l2_loss(
+                self.lightgcn.user_embeddings(bat_users),
+                self.lightgcn.item_embeddings(bat_pos_items),
+                self.lightgcn.item_embeddings(bat_neg_items))
+            loss = loss + self.reg * reg_loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            total_loss += float(loss.detach())
+            total_o += float(loss_o.detach())
+            total_c += float(loss_c.detach())
+            total_i += float(loss_i.detach())
+            total_reg += float(self.reg * reg_loss.detach())
+        return total_loss, total_o, total_c, total_i, total_reg
+
     def train_model(self):
         self.logger.info(self.evaluator.metrics_info())
         stopping_step = 0
@@ -2379,6 +2537,34 @@ class NoiseSGL(AbstractRecommender):
                     total_bpr_loss / self.num_ratings,
                     (total_loss - total_bpr_loss - total_reg_loss) / self.num_ratings,
                     total_reg_loss / self.num_ratings,
+                    time() - training_start_time,))
+                if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
+                    result, flag = self.evaluate_model()
+                    self.logger.info("epoch %d:\t%s" % (epoch, result))
+                    if flag:
+                        self.best_epoch = epoch
+                        stopping_step = 0
+                        self.logger.info("Find a better model.")
+                    else:
+                        stopping_step += 1
+                        if stopping_step >= self.stop_cnt:
+                            self.logger.info("Early stopping is trigger at epoch: {}".format(epoch))
+                            break
+                continue
+            if self.ultragcn:
+                # UltraGCN baseline: fully separate training loop (no GCN propagation, no
+                # InfoNCE). L = L_O + lambda*L_C + gamma*L_I + reg*L2 (paper eq. 14/18).
+                total_loss, total_o, total_c, total_i, total_reg = 0.0, 0.0, 0.0, 0.0, 0.0
+                training_start_time = time()
+                self.lightgcn.train()
+                data_iter = self._pairwise_iter()
+                total_loss, total_o, total_c, total_i, total_reg = self._ultragcn_batch_loop(data_iter)
+                self.logger.info("[iter %d : loss : %.4f = %.4f + %.4f + %.4f, time: %f]" % (
+                    epoch,
+                    total_loss / self.num_ratings,
+                    total_o / self.num_ratings,
+                    (total_c + total_i) / self.num_ratings,
+                    total_reg / self.num_ratings,
                     time() - training_start_time,))
                 if epoch % self.verbose == 0 and epoch > self.config['start_testing_epoch']:
                     result, flag = self.evaluate_model()
