@@ -24,7 +24,7 @@ plot_if_ready () {
 # poll for up to 6 hours (the remaining chain: gowalla_lgn -> lastfm_noise -> lastfm_lgn)
 for _ in $(seq 1 2160); do
   plot_if_ready gowalla
-  plot_if_ready lastfm-2k
+  plot_if_ready lastfm
   if [ -f research_logs/embedding_viz_gowalla.svg ] && [ -f research_logs/embedding_viz_lastfm-2k.svg ]; then
     echo "ALLDONE $(date)" >> "$OUT"
     exit 0
