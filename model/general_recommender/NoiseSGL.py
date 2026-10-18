@@ -148,6 +148,28 @@ class _LightGCN(nn.Module):
         self.hccf_temp = 1.0
         self.u_hyper = None   # [embed_dim, H] learnable user->hyperedge dependency
         self.i_hyper = None   # [embed_dim, H] learnable item->hyperedge dependency
+        # DCCF baseline (SIGIR'23, arXiv:2305.02759, official repo HKUDS/DCCF model.py).
+        # dccf=False keeps the NoiseSGL backbone (backward compatible); dccf=True switches
+        # to the faithful DCCF architecture for the No.1-baseline same-protocol comparison
+        # (task #8): learnable intent prototypes (user_intent/item_intent, [d, K]) route
+        # each node's embedding into K latent intents (softmax assignment + reconstruction),
+        # then per layer four views are formed -- (gnn) the plain GCN propagation,
+        # (int) the intent-aware aggregation, (gaa) the graph-adaptive and (iaa) the
+        # intent-adaptive subgraphs (row-normalised cosine-affinity masks learned from the
+        # embeddings). The layer state is the residual sum gnn+int+gaa+iaa+prev and the
+        # final embedding = sum over all layer states. SSL contrasts the gnn view against
+        # int/gaa/iaa (user- and item-side, per layer, batch-limited negatives). This is a
+        # learnable-structure baseline, deliberately placed side-by-side with our 'static
+        # wins' iron law (R4/R19) as the cleanest counterfactual (like HCCF, R43).
+        self.dccf = False
+        self.dccf_n_intents = 128
+        self.dccf_temp = 1.0
+        self.user_intent = None    # [embed_dim, K] learnable user->intent dependency
+        self.item_intent = None    # [embed_dim, K] learnable item->intent dependency
+        self.dccf_h = None         # [2E] edge source indices (long, on device)
+        self.dccf_t = None         # [2E] edge target indices (long, on device)
+        self.dccf_indices = None   # [2, 2E] stacked edge indices for torch.sparse_coo_tensor
+        self.dccf_n_nodes = 0
         # Round-8: RecDCL-style feature-wise contrastive learning (FCL). Representation
         # layer only -> does NOT touch the propagation operator (respects R4/R6). All
         # coefficients default to 0 (module off, backward compatible).
@@ -239,6 +261,22 @@ class _LightGCN(nn.Module):
             sup_neg_ratings = inner_product(user_embs, neg_item_embs)
             sup_logits = sup_pos_ratings - sup_neg_ratings
             infonce = self._hccf_infonce(users, items, gnn_lats, hyper_lats)
+            return sup_logits, infonce, None, None, None
+
+        if self.dccf:
+            # DCCF baseline (task #8): faithful disentangled-contrast architecture. The
+            # augmentation is fully deterministic (learned cosine-affinity adaptive masks),
+            # so no edge-dropped sub-graph is used; the full norm_adj drives the gnn view.
+            embeds, gnn_lats, int_lats, gaa_lats, iaa_lats = self._forward_dccf()
+            user_embeddings, item_embeddings = torch.split(
+                embeds, [self.num_users, self.num_items], dim=0)
+            user_embs = F.embedding(users, user_embeddings)
+            item_embs = F.embedding(items, item_embeddings)
+            neg_item_embs = F.embedding(neg_items, item_embeddings)
+            sup_pos_ratings = inner_product(user_embs, item_embs)
+            sup_neg_ratings = inner_product(user_embs, neg_item_embs)
+            sup_logits = sup_pos_ratings - sup_neg_ratings
+            infonce = self._dccf_infonce(users, items, gnn_lats, int_lats, gaa_lats, iaa_lats)
             return sup_logits, infonce, None, None, None
 
         user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True, apply_dropout=True)
@@ -562,6 +600,113 @@ class _LightGCN(nn.Module):
             loss = loss + (-torch.log(nume / deno)).mean()
         return loss
 
+    def _adaptive_mask(self, matrix):
+        """DCCF adaptive subgraph: edge weight = cosine affinity mapped to [0,1]
+        (official: (sum(head*tail)+1)/2 on L2-normalised embeddings), then row-normalised
+        (D^{-1} A) so each node aggregates a convex combination of its neighbours.
+        head/tail always come from the SAME matrix (official _adaptive_mask is called with
+        gnn_head/gnn_tail both gathered from gnn_layer, and int_head/int_tail both from
+        int_layer), so we normalise the full [n,d] matrix once and compute the per-edge dot
+        products in CHUNKS over edges. The edge weights are computed under torch.no_grad():
+        materialising an autograd graph through the O(E*d) adaptive-mask cosine would need
+        tens of GB at embed_size=256 (the official code runs at 32 dims where it is cheap),
+        and this is the only gradient path we sacrifice for a capacity-matched baseline --
+        the message values (embeddings[t]) still receive gradient via the sparse mm.
+        Returns detached [2E] message-passing weights consumed by _masked_spmm."""
+        m = F.normalize(matrix, dim=1)
+        E = int(self.dccf_h.shape[0])
+        edge_alpha = torch.empty(E, device=matrix.device)
+        chunk = 1 << 20   # ~1M edges per chunk: peak ~ chunk*d*4 bytes (~1 GiB at d=256)
+        with torch.no_grad():
+            for s in range(0, E, chunk):
+                e = min(s + chunk, E)
+                h = self.dccf_h[s:e]
+                t = self.dccf_t[s:e]
+                edge_alpha[s:e] = (torch.sum(m[h] * m[t], dim=1) + 1.0) / 2.0
+            d_scores = torch.zeros(self.dccf_n_nodes, device=matrix.device)
+            d_scores.index_add_(0, self.dccf_h, edge_alpha)          # row degree of weighted adj
+            d_inv = 1.0 / (d_scores + 1e-12)
+            d_inv = torch.where(torch.isfinite(d_inv), d_inv, torch.zeros_like(d_inv))
+            weights = d_inv[self.dccf_h] * edge_alpha
+        return weights
+
+    def _masked_spmm(self, values, embeddings):
+        """Sparse message passing with the adaptive-mask weights (row-normalised):
+        out = A_adaptive @ embeddings. Implemented with torch.sparse.mm so the autograd
+        backward is O(nnz*d) without materialising the [2E, d] gather (the index_add
+        version would keep a [2E, d] autograd graph and OOM at embed_size=256)."""
+        adj = torch.sparse_coo_tensor(
+            self.dccf_indices, values, (self.dccf_n_nodes, self.dccf_n_nodes))
+        return torch.sparse.mm(adj, embeddings)
+
+    def _forward_dccf(self):
+        """Faithful DCCF forward pass (official HKUDS/DCCF model.py DCCF.inference).
+
+        Per layer:  gnn = G @ state  (plain D^{-1/2} A D^{-1/2} propagation);
+                    int = softmax(e @ intent) @ intent^T  (intent-aware reconstruction);
+                    gaa = adaptive_mask(gnn) @ state  (graph-adaptive augmentation);
+                    iaa = adaptive_mask(int) @ state  (intent-adaptive augmentation);
+                    state <- gnn + int + gaa + iaa + prev (residual).
+        Final embedding = sum over the L+1 layer states. Returns (embeds, gnn_lats,
+        int_lats, gaa_lats, iaa_lats) with per-layer views of length n_layers.
+        """
+        embeds = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        all_embeddings = [embeds]
+        gnn_lats, int_lats, gaa_lats, iaa_lats = [], [], [], []
+        for _ in range(self.n_layers):
+            gnn_layer = torch_sp.mm(self.norm_adj, all_embeddings[-1])
+            u_lat, i_lat = torch.split(all_embeddings[-1], [self.num_users, self.num_items], dim=0)
+            u_int = torch.softmax(u_lat @ self.user_intent, dim=1) @ self.user_intent.t()
+            i_int = torch.softmax(i_lat @ self.item_intent, dim=1) @ self.item_intent.t()
+            int_layer = torch.cat([u_int, i_int], dim=0)
+            gaa = self._masked_spmm(
+                self._adaptive_mask(gnn_layer), all_embeddings[-1])
+            iaa = self._masked_spmm(
+                self._adaptive_mask(int_layer), all_embeddings[-1])
+            gnn_lats.append(gnn_layer)
+            int_lats.append(int_layer)
+            gaa_lats.append(gaa)
+            iaa_lats.append(iaa)
+            all_embeddings.append(gnn_layer + int_layer + gaa + iaa + all_embeddings[-1])
+        embeds = torch.stack(all_embeddings, dim=1).sum(dim=1)
+        return embeds, gnn_lats, int_lats, gaa_lats, iaa_lats
+
+    def _dccf_infonce(self, users, items, gnn_lats, int_lats, gaa_lats, iaa_lats):
+        """Faithful DCCF contrastive loss (official DCCF.cal_ssl_loss).
+
+        For each layer, contrast the gnn view (anchor) against the int / gaa / iaa views
+        (user- and item-side), over the unique users / unique positive items in the batch
+        (batch-limited negatives, NOT the full-graph logsumexp used by our NoiseSGL
+        InfoNCE). All views are L2-normalised before contrasting (official F.normalize);
+        the positive is the same node in the two views, negatives are the other batch
+        nodes. Mean-scaled per node, summed over 6 pairs x L layers. No detach (official).
+        """
+        uniq_u = torch.unique(users)
+        uniq_i = torch.unique(items)
+
+        def cal_loss(e1, e2):
+            pos = torch.exp(torch.sum(e1 * e2, dim=1) / self.dccf_temp)
+            neg = torch.exp(e1 @ e2.t() / self.dccf_temp).sum(1)
+            return (-torch.log(pos / (neg + 1e-8) + 1e-8)).mean()
+
+        loss = 0.0
+        for k in range(len(gnn_lats)):
+            u_gnn, i_gnn = torch.split(gnn_lats[k], [self.num_users, self.num_items], dim=0)
+            u_int, i_int = torch.split(int_lats[k], [self.num_users, self.num_items], dim=0)
+            u_gaa, i_gaa = torch.split(gaa_lats[k], [self.num_users, self.num_items], dim=0)
+            u_iaa, i_iaa = torch.split(iaa_lats[k], [self.num_users, self.num_items], dim=0)
+            u_gnn = F.normalize(u_gnn[uniq_u], dim=1)
+            u_int = F.normalize(u_int[uniq_u], dim=1)
+            u_gaa = F.normalize(u_gaa[uniq_u], dim=1)
+            u_iaa = F.normalize(u_iaa[uniq_u], dim=1)
+            i_gnn = F.normalize(i_gnn[uniq_i], dim=1)
+            i_int = F.normalize(i_int[uniq_i], dim=1)
+            i_gaa = F.normalize(i_gaa[uniq_i], dim=1)
+            i_iaa = F.normalize(i_iaa[uniq_i], dim=1)
+            loss += cal_loss(u_gnn, u_int) + cal_loss(u_gnn, u_gaa) + cal_loss(u_gnn, u_iaa)
+            loss += cal_loss(i_gnn, i_int) + cal_loss(i_gnn, i_gaa) + cal_loss(i_gnn, i_iaa)
+        return loss
+
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
@@ -661,6 +806,12 @@ class _LightGCN(nn.Module):
         if self.hccf:
             # HCCF: full (non-dropped) adjacency, no hypergraph dropout (training=False).
             embeds, _, _ = self._forward_hccf(self.norm_adj)
+            self._user_embeddings_final, self._item_embeddings_final = torch.split(
+                embeds, [self.num_users, self.num_items], dim=0)
+            return
+        if self.dccf:
+            # DCCF: deterministic (no dropout), full norm_adj drives all four views.
+            embeds, _, _, _, _ = self._forward_dccf()
             self._user_embeddings_final, self._item_embeddings_final = torch.split(
                 embeds, [self.num_users, self.num_items], dim=0)
             return
@@ -964,6 +1115,21 @@ class NoiseSGL(AbstractRecommender):
         assert 0.0 < self.hccf_keep_rate <= 1.0
         self.hccf_ssl_reg = float(config["hccf_ssl_reg"]) if "hccf_ssl_reg" in config else 1e-3
         self.hccf_temp = float(config["hccf_temp"]) if "hccf_temp" in config else 1.0
+        # DCCF baseline (task #8, No.1 baseline, arXiv:2305.02759). dccf=1 switches the
+        # whole forward/eval to the faithful DCCF architecture (official HKUDS/DCCF):
+        # learnable intent prototypes user_intent/item_intent ([d,K]), per-layer four-view
+        # disentangled aggregation (gnn / intent / graph-adaptive / intent-adaptive), and
+        # gnn-vs-{int,gaa,iaa} contrast (batch-limited negatives). dccf_* hyperparameters
+        # are the official defaults (n_intents=128, temp=1.0, emb_reg=2.5e-5,
+        # cen_reg=5e-3, ssl_reg=1e-1); they REPLACE our ssl_reg/ssl_temp/ssl_anneal/reg
+        # which do not apply to DCCF.
+        self.dccf = int(config["dccf"]) if "dccf" in config else 0
+        assert self.dccf in (0, 1)
+        self.dccf_n_intents = int(config["dccf_n_intents"]) if "dccf_n_intents" in config else 128
+        self.dccf_temp = float(config["dccf_temp"]) if "dccf_temp" in config else 1.0
+        self.dccf_emb_reg = float(config["dccf_emb_reg"]) if "dccf_emb_reg" in config else 2.5e-5
+        self.dccf_cen_reg = float(config["dccf_cen_reg"]) if "dccf_cen_reg" in config else 5e-3
+        self.dccf_ssl_reg = float(config["dccf_ssl_reg"]) if "dccf_ssl_reg" in config else 1e-1
 
         # Other hyper-parameters
         self.best_epoch = 0
@@ -1086,15 +1252,45 @@ class NoiseSGL(AbstractRecommender):
         if self.hccf:
             # learnable hyperedge-dependency matrices (HCCF official: xavier_uniform on
             # [latdim, hyperNum] Parameters, registered on the _LightGCN module so they
-            # are optimised by the same Adam).
+            # are optimised by the same Adam). NOTE: created directly on self.device --
+            # assigning a fresh Parameter after .to(device) does not move it (it would
+            # otherwise stay on CPU and crash the GPU forward with a device mismatch).
             self.lightgcn.u_hyper = nn.Parameter(
-                torch.empty(self.emb_size, self.hccf_hyper_num))
+                torch.empty(self.emb_size, self.hccf_hyper_num, device=self.device))
             self.lightgcn.i_hyper = nn.Parameter(
-                torch.empty(self.emb_size, self.hccf_hyper_num))
+                torch.empty(self.emb_size, self.hccf_hyper_num, device=self.device))
             nn.init.xavier_uniform_(self.lightgcn.u_hyper)
             nn.init.xavier_uniform_(self.lightgcn.i_hyper)
             self.logger.info("[hccf] hyper_num=%d keep_rate=%.2f ssl_reg=%.1e temp=%.2f" % (
                 self.hccf_hyper_num, self.hccf_keep_rate, self.hccf_ssl_reg, self.hccf_temp))
+        self.lightgcn.dccf = bool(self.dccf)
+        self.lightgcn.dccf_n_intents = self.dccf_n_intents
+        self.lightgcn.dccf_temp = self.dccf_temp
+        if self.dccf:
+            # learnable intent prototypes (DCCF official: xavier_normal on [emb_dim, K]),
+            # created directly on self.device (see HCCF note above).
+            self.lightgcn.user_intent = nn.Parameter(
+                torch.empty(self.emb_size, self.dccf_n_intents, device=self.device))
+            self.lightgcn.item_intent = nn.Parameter(
+                torch.empty(self.emb_size, self.dccf_n_intents, device=self.device))
+            nn.init.xavier_normal_(self.lightgcn.user_intent)
+            nn.init.xavier_normal_(self.lightgcn.item_intent)
+            # bipartite edge list (both directions) for the adaptive-mask message passing;
+            # matches the official plain_adj coo (adj + adj.T) used by _adaptive_mask.
+            ui_pairs = self.dataset.train_data.to_user_item_pairs()
+            users_np = ui_pairs[:, 0]
+            items_np = ui_pairs[:, 1]
+            nu = int(self.num_users)
+            h = np.concatenate([users_np, items_np + nu]).astype(np.int64)
+            t = np.concatenate([items_np + nu, users_np]).astype(np.int64)
+            edge_idx = torch.from_numpy(np.stack([h, t], axis=0)).long().to(self.device)
+            self.lightgcn.dccf_h = edge_idx[0]
+            self.lightgcn.dccf_t = edge_idx[1]
+            self.lightgcn.dccf_indices = edge_idx
+            self.lightgcn.dccf_n_nodes = nu + int(self.num_items)
+            self.logger.info("[dccf] n_intents=%d temp=%.2f emb_reg=%.1e cen_reg=%.1e ssl_reg=%.1e edges=%d" % (
+                self.dccf_n_intents, self.dccf_temp, self.dccf_emb_reg,
+                self.dccf_cen_reg, self.dccf_ssl_reg, int(edge_idx.shape[1])))
         self.lightgcn.fcl_poly = self.fcl_poly
         self.lightgcn.fcl_bt = self.fcl_bt
         self.lightgcn.fcl_off = self.fcl_off
@@ -1585,9 +1781,9 @@ class NoiseSGL(AbstractRecommender):
                     bpr_loss = -torch.sum(pw * F.logsigmoid(sup_logits))
                 else:
                     bpr_loss = -torch.sum(F.logsigmoid(sup_logits))
-                if self.hccf:
-                    # HCCF official uses a MEAN-scaled BPR (batch mean), matching its
-                    # mean-scaled contrast loss so the official 1e-3 SSL:BPR ratio holds.
+                if self.hccf or self.dccf:
+                    # HCCF/DCCF official use a MEAN-scaled BPR (batch mean), matching their
+                    # mean-scaled contrast losses so the official SSL:BPR ratios hold.
                     bpr_loss = -torch.mean(F.logsigmoid(sup_logits))
 
                 # Reg Loss
@@ -1600,7 +1796,7 @@ class NoiseSGL(AbstractRecommender):
                 # InfoNCE Loss is computed inside forward() so that >=2 views can be
                 # mixed; for view_mix="nn" it is identical to the original single pair.
                 # DMLC: multi-layer contrast (disable with use_mlc=0 for pure SimGCL-style).
-                if self.use_mlc and not self.hccf:
+                if self.use_mlc and not self.hccf and not self.dccf:
                     layers2_v1 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
                                                             perturb=True, eps=cur_eps)
                     layers2_v2 = self.lightgcn._forward_gcn(self.lightgcn.norm_adj, return_all=True,
@@ -1645,6 +1841,14 @@ class NoiseSGL(AbstractRecommender):
                     # No annealing / fcl / dau / spec -- those are our fusion components
                     # (R13/R15/R8/R9/R35), not part of HCCF, and would break faithfulness.
                     loss = bpr_loss + self.hccf_ssl_reg * infonce_loss + self.reg * reg_loss
+                elif self.dccf:
+                    # DCCF faithful loss: mean-BPR + emb_reg*L2(batch embeddings) +
+                    # cen_reg*||intent||^2 (prototype regularisation) + ssl_reg*contrast.
+                    # No annealing / fcl / dau / spec (our fusion components, not DCCF's).
+                    cen_loss = torch.sum(self.lightgcn.user_intent.pow(2)) + \
+                        torch.sum(self.lightgcn.item_intent.pow(2))
+                    loss = bpr_loss + self.dccf_emb_reg * reg_loss + \
+                        self.dccf_cen_reg * cen_loss + self.dccf_ssl_reg * infonce_loss
                 else:
                     ssl_weight = self._ssl_weight(epoch)
                     loss = bpr_loss + self.ssl_reg * ssl_weight * infonce_loss + self.reg * reg_loss
