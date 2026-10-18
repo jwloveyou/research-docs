@@ -65,6 +65,22 @@ class _LightGCN(nn.Module):
         # so the eval-time embeddings stay deterministic.
         self.dropout_rate = 0.0
         self.dropout = nn.Dropout(self.dropout_rate)
+        # Round-49: DropEdge-style edge dropout on the MAIN propagation branch only
+        # (4th-component candidate #16). dropedge_keep=1.0 keeps the full normalized
+        # adjacency (backward compatible); <1.0 drops a fraction (1-keep) of the
+        # bipartite training edges ONCE PER EPOCH and re-normalises, so the main
+        # (prediction) branch propagates on a stochastically thinned graph during
+        # training while eval() still uses the full norm_adj (the standard DropEdge
+        # train-with-dropout / test-with-full protocol, Rong et al. ICLR 2020).
+        # Mechanism: E11 shows depth-accumulated over-smoothing is still present in the
+        # main branch (cos(l0,lL)=0.46 even with noise); the noise views only regularise
+        # the CONTRASTIVE branch via InfoNCE, so the main branch currently has no direct
+        # anti-over-smoothing. DropEdge breaks the graph connectivity during propagation
+        # and is the canonical static remedy. Orthogonal to the 3 fusion components
+        # (embedding noise R1 / SSL anneal R15 / capacity R18) and distinct from R25
+        # (input-embedding dropout, neutral) and R6/R7 (edge dropout on the CONTRAST
+        # views, harmful -- untouched here). Static, parameter-free (R1/R15/R18 law).
+        self.dropedge_keep = 1.0
         self._user_embeddings_final = None
         self._item_embeddings_final = None
         # Round-23: L2-normalised (cosine) scoring. When on, the final main-branch
@@ -294,7 +310,7 @@ class _LightGCN(nn.Module):
             init(self.user_embeddings.weight)
             init(self.item_embeddings.weight)
 
-    def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0):
+    def forward(self, sub_graph1, sub_graph2, users, items, neg_items, eps=0.0, main_adj=None):
         if self.hccf:
             # HCCF baseline (task #8): faithful local-GCN + hypergraph architecture with
             # local-vs-hypergraph per-layer contrast. sub_graph1 is the edge-dropped adj
@@ -329,7 +345,9 @@ class _LightGCN(nn.Module):
             infonce = self._dccf_infonce(users, items, gnn_lats, int_lats, gaa_lats, iaa_lats)
             return sup_logits, infonce, None, None, None
 
-        user_embeddings, item_embeddings = self._forward_gcn(self.norm_adj, use_freq=self.freq_on_main, apply_proto=True, apply_dropout=True)
+        user_embeddings, item_embeddings = self._forward_gcn(
+            main_adj if main_adj is not None else self.norm_adj,
+            use_freq=self.freq_on_main, apply_proto=True, apply_dropout=True)
 
         if self.l2_norm:
             # Round-23: unit-normalise the fused main-branch embeddings used for the BPR
@@ -1309,6 +1327,19 @@ class NoiseSGL(AbstractRecommender):
         # problem). 0 = off (backward compatible).
         self.dropout = float(config["dropout"]) if "dropout" in config else 0.0
         assert 0.0 <= self.dropout < 1.0
+        # Round-49: DropEdge-style edge dropout on the MAIN propagation branch
+        # (4th-component candidate #16). dropedge_keep=1.0 keeps the full adjacency
+        # (backward compatible); <1.0 drops (1-keep) of the bipartite training edges
+        # once per epoch (re-normalised) for the main/prediction branch only -- the
+        # contrastive noise views keep the full adjacency + embedding noise, so the SSL
+        # signal is untouched (respects R4/R6/R7). eval() still uses the full norm_adj
+        # (standard DropEdge train/test protocol). Static, parameter-free, orthogonal to
+        # the 3 fusion components. Mechanism: the main branch currently has NO direct
+        # anti-over-smoothing (the noise only regularises the InfoNCE views), and E11
+        # shows residual over-smoothing (cos(l0,lL)=0.46); DropEdge breaks connectivity
+        # during propagation and is the canonical static remedy (Rong et al. ICLR 2020).
+        self.dropedge_keep = float(config["dropedge_keep"]) if "dropedge_keep" in config else 1.0
+        assert 0.0 < self.dropedge_keep <= 1.0
         # Round-34: GCNII/APPNP-style static initial-residual strength (4th-component
         # candidate #9). 0 = plain LightGCN propagation (backward compatible). Static and
         # parameter-free; targets the depth-accumulated over-smoothing that E11 identified,
@@ -1552,6 +1583,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.dropout_rate = self.dropout
         self.lightgcn.dropout = nn.Dropout(self.dropout)
+        self.lightgcn.dropedge_keep = self.dropedge_keep
         self.lightgcn.res_alpha = self.res_alpha
         self.lightgcn.agg_weights = self._agg_weights_vec
         self.lightgcn.gate_mode = self.gate_mode
@@ -2226,6 +2258,17 @@ class NoiseSGL(AbstractRecommender):
                 sub_graph1 = sp_mat_to_sp_tensor(
                     self.create_adj_mat(is_subgraph=True, aug_type="ed")).to(self.device)
                 self.ssl_ratio = _saved_ratio
+            # Round-49: DropEdge-style edge dropout on the MAIN propagation branch.
+            # One freshly-thinned (and re-normalised) adjacency per epoch, used ONLY by
+            # the prediction branch (BPR); the noise views keep the full norm_adj, so
+            # the SSL signal is unchanged. eval() still uses self.norm_adj (full graph).
+            main_adj = None
+            if self.dropedge_keep < 1.0:
+                _saved_ratio = self.ssl_ratio
+                self.ssl_ratio = 1.0 - self.dropedge_keep
+                main_adj = sp_mat_to_sp_tensor(
+                    self.create_adj_mat(is_subgraph=True, aug_type="ed")).to(self.device)
+                self.ssl_ratio = _saved_ratio
             data_iter = self._pairwise_iter()
             self.lightgcn.train()
             cur_eps = self._noise_eps(epoch)
@@ -2245,7 +2288,8 @@ class NoiseSGL(AbstractRecommender):
                 bat_pos_items = torch.from_numpy(bat_pos_items).long().to(self.device)
                 bat_neg_items = torch.from_numpy(bat_neg_items).long().to(self.device)
                 sup_logits, infonce_loss, fcl_loss, dau_loss, spec_loss = self.lightgcn(
-                    sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=cur_eps)
+                    sub_graph1, sub_graph2, bat_users, bat_pos_items, bat_neg_items, eps=cur_eps,
+                    main_adj=main_adj)
                 # Round-41: BPR ranking margin. Applies to both the [B] and [B,K] logit
                 # shapes (multi-negative R21), and ONLY to the BPR term (InfoNCE keeps its
                 # own temperature). margin=0 is a no-op (backward compatible).
