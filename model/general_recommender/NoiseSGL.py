@@ -117,6 +117,16 @@ class _LightGCN(nn.Module):
         # noise_eps (backward compatible); otherwise a per-node multiplier of the
         # per-layer noise magnitude (mean-normalised to 1).
         self.noise_deg_scale = None
+        # Round-58: item-side noise boost (asymmetric noise magnitude). None = symmetric
+        # noise_eps on user and item rows (backward compatible); otherwise a per-node
+        # multiplier that is 1.0 on all user rows and (1+noise_item_boost) on all item
+        # rows. Motivation: item embeddings live on a much larger, heavier-skewed side
+        # (|I| >> |U|, few head items dominate), so they suffer the rank-collapse /
+        # over-smoothing pathology (E11) more than user rows; a stronger re-diversifying
+        # perturbation on the item side targets that imbalance. Static, parameter-free,
+        # orthogonal to the node axis (noise_deg_gamma), depth axis (noise_layer_gamma)
+        # and epoch axis (noise_anneal).
+        self.noise_item_scale = None
         # Round-33: depth-aware (layer-wise) noise schedule. noise_layer_gamma=0 keeps
         # a uniform per-layer noise magnitude (backward compatible). gamma>0 gives
         # deeper layers a stronger perturbation (over-smoothing grows with depth, cf.
@@ -997,6 +1007,8 @@ class _LightGCN(nn.Module):
         if perturb and eps > 0 and self.noise_mode == 1:
             random_noise = torch.rand_like(ego_embeddings)
             scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
+            if self.noise_item_scale is not None:
+                scale = scale * self.noise_item_scale.view(-1, 1)
             ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
         # Round-34: layer-0 snapshot for the static initial-residual connection.
         initial_embeddings = ego_embeddings
@@ -1034,6 +1046,8 @@ class _LightGCN(nn.Module):
                 # over-smoothing (cf. E11).
                 random_noise = torch.rand_like(ego_embeddings)
                 scale = eps if self.noise_deg_scale is None else eps * self.noise_deg_scale.view(-1, 1)
+                if self.noise_item_scale is not None:
+                    scale = scale * self.noise_item_scale.view(-1, 1)
                 if self.noise_layer_gamma != 0.0 and self.n_layers > 1:
                     scale = scale * (1.0 + self.noise_layer_gamma * (float(k) / float(self.n_layers - 1)))
                 ego_embeddings = ego_embeddings + torch.sign(ego_embeddings) * F.normalize(random_noise, dim=1) * scale
@@ -1234,6 +1248,13 @@ class NoiseSGL(AbstractRecommender):
         # Static and orthogonal to the node axis (noise_deg_gamma) and epoch axis
         # (noise_anneal); respects the R1/R15/R18 'static wins' law.
         self.noise_layer_gamma = float(config["noise_layer_gamma"]) if "noise_layer_gamma" in config else 0.0
+        # Round-58: item-side noise boost. 0 = symmetric noise on user/item rows
+        # (backward compatible). boost>0 scales the per-item noise magnitude to
+        # (1+boost)*noise_eps while user rows stay at noise_eps; boost<0 weakens item
+        # noise. Item rows are the larger/heavier-skewed side (|I| >> |U|), so a
+        # stronger re-diversifying perturbation there is a targeted anti-collapse move
+        # (E11). Static, parameter-free, orthogonal to the node/depth/epoch noise axes.
+        self.noise_item_boost = float(config["noise_item_boost"]) if "noise_item_boost" in config else 0.0
         # Round-19: adaptive per-node per-layer gating (AdaGate-style). gate_mode=1 turns
         # on the gated residual in _forward_gcn; gate_init sets the initial sigmoid bias
         # (positive => gate starts near 1, i.e. close to plain LightGCN, avoiding the
@@ -1520,6 +1541,16 @@ class NoiseSGL(AbstractRecommender):
             self._noise_deg_scale = torch.from_numpy(scale).float().to(self.device)
             self.logger.info("[noise-deg] gamma=%.2f scale[min/mean/max]=%.3f/%.3f/%.3f" % (
                 self.noise_deg_gamma, float(scale.min()), float(scale.mean()), float(scale.max())))
+        self._noise_item_scale = None
+        if self.noise_item_boost != 0.0:
+            item_scale = 1.0 + self.noise_item_boost
+            scale = np.concatenate([
+                np.ones(self.num_users, dtype=np.float32),
+                np.full(self.num_items, item_scale, dtype=np.float32),
+            ], axis=0)
+            self._noise_item_scale = torch.from_numpy(scale).float().to(self.device)
+            self.logger.info("[noise-item-boost] boost=%.2f user_scale=1.000 item_scale=%.3f" % (
+                self.noise_item_boost, item_scale))
         if self.nt_ssm:
             # Precompute one weight per training positive pair: w = (deg_u+1)^-a * (deg_i+1)^-a,
             # normalised to mean 1 so the overall BPR scale is unchanged. Low-degree (tail)
@@ -1579,6 +1610,7 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn.ssl_temp = self.ssl_temp
         self.lightgcn.noise_mode = self.noise_mode
         self.lightgcn.noise_deg_scale = self._noise_deg_scale
+        self.lightgcn.noise_item_scale = self._noise_item_scale
         self.lightgcn.noise_layer_gamma = self.noise_layer_gamma
         self.lightgcn.l2_norm = bool(self.l2_norm)
         self.lightgcn.dropout_rate = self.dropout
