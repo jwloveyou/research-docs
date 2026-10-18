@@ -120,7 +120,7 @@ def main():
                 bu = torch.from_numpy(bat_users).long().to(device)
                 bi = torch.from_numpy(bat_pos).long().to(device)
                 bn = torch.from_numpy(bat_neg).long().to(device)
-                sup_logits, infonce, _, _ = model(None, None, bu, bi, bn, eps=cur_eps)
+                sup_logits, infonce, _, _, _ = model(None, None, bu, bi, bn, eps=cur_eps)
                 bpr = -torch.sum(F.logsigmoid(sup_logits))
                 reg = l2_loss(model.user_embeddings(bu), model.item_embeddings(bi),
                               model.item_embeddings(bn))
