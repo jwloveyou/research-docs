@@ -1,0 +1,2 @@
+BEGIN 2026年 10月 19日 星期一 23:25:26 CST gpu=0
+START gowalla_emb512_s43 gpu=0 ep=60 2026年 10月 19日 星期一 23:25:26 CST

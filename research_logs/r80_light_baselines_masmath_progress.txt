@@ -1,0 +1,2 @@
+BEGIN 2026年 10月 19日 星期一 23:16:45 CST
+START gowalla_lightgcn gpu=0 ep=300 2026年 10月 19日 星期一 23:16:45 CST
