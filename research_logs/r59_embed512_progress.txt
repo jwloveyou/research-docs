@@ -1,2 +1,20 @@
 BEGIN 2026年 10月 18日 星期日 16:59:12 CST
 START gowalla_emb512 ep=60 2026年 10月 18日 星期日 16:59:12 CST
+END   gowalla_emb512 rc=0 2026年 10月 19日 星期一 02:28:11 CST
+--- gowalla_emb512 best ---
+2026-10-19 02:28:10.992: best_result@epoch 29:
+
+2026-10-19 02:28:10.992: 		0.0585      	0.1894      	0.1596      
+START yelp2018_emb512 ep=20 2026年 10月 19日 星期一 02:28:11 CST
+END   yelp2018_emb512 rc=0 2026年 10月 19日 星期一 07:20:03 CST
+--- yelp2018_emb512 best ---
+2026-10-19 07:20:03.039: best_result@epoch 4:
+
+2026-10-19 07:20:03.039: 		0.0319      	0.0716      	0.0587      
+START amazon-book_emb512 ep=15 2026年 10月 19日 星期一 07:20:03 CST
+END   amazon-book_emb512 rc=0 2026年 10月 19日 星期一 15:27:03 CST
+--- amazon-book_emb512 best ---
+2026-10-19 15:27:01.862: best_result@epoch 15:
+
+2026-10-19 15:27:01.862: 		0.0231      	0.0589      	0.0455      
+ALLDONE 2026年 10月 19日 星期一 15:27:03 CST

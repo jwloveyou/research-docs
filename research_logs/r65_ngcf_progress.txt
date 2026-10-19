@@ -1,3 +1,9 @@
 BEGIN 2026年 10月 18日 星期日 21:52:53 CST
 BEGIN gpu=0 2026年 10月 18日 星期日 21:52:53 CST
 START gowalla ngcf gpu=0 ep=200 2026年 10月 18日 星期日 21:52:53 CST
+END   gowalla ngcf rc=0 2026年 10月 19日 星期一 07:46:00 CST
+--- gowalla ngcf best ---
+2026-10-19 07:46:00.281: best_result@epoch 4:
+
+2026-10-19 07:46:00.281: 		0.0391      	0.1221      	0.1056      
+START yelp2018 ngcf gpu=0 ep=100 2026年 10月 19日 星期一 07:46:00 CST
