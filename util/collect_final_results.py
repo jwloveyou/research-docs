@@ -286,9 +286,9 @@ def main():
     # 报告补丁候选：把 研究总报告.md §2.3/§2.1/§3.2 的「重跑中」占位符替换为终值。
     # 仅对 DONE 的 run 输出 old->new，保证「跑出什么就替换什么」，不凭空造值。
     # 占位符单元显式登记（只有这些是 R82 待补的空白格；其余格已有终值）。
+    # 注：yelp2018 SimGCL 已在 R85 手工回填为 0.0676/0.0556@ep14，故不再登记该占位符。
     PLACEHOLDER = {
         ("gowalla", "xsimgcl"):    "重跑中（R82）",
-        ("yelp2018", "simgcl"):    "重跑中（R82）",
         ("yelp2018", "xsimgcl"):   "重跑中（R82）",
         ("amazon-book", "lightgcn"): "重跑中（R82，10-20 OOM）",
         ("amazon-book", "simgcl"): "重跑中（R82）",

@@ -1,8 +1,8 @@
 | 数据集 | LightGCN | SGL | SimGCL | XSimGCL | 融合 embed512(seed42) |
 |---|---|---|---|---|---|
 | **gowalla** | 0.1761/0.1510@ep296 | 0.1788/0.1504@ep28 | 0.1781/0.1498@ep18 | ❌ failed | **0.1894/0.1596**@ep29 |
-| **yelp2018** | 0.0550/0.0448@ep100 | 0.0671/0.0555@ep20 | ⏳ running | ❌ failed | **0.0716/0.0587**@ep4 |
-| **amazon-book** | ❌ failed | 0.0461/0.0360@ep21 | ❌ failed | ❌ failed | **0.0589/0.0455**@ep15 |
+| **yelp2018** | 0.0550/0.0448@ep100 | 0.0671/0.0555@ep20 | 0.0676/0.0556@ep14 | ❌ failed | **0.0716/0.0587**@ep4 |
+| **amazon-book** | ❌ failed | 0.0461/0.0360@ep21 | ⏳ running | ❌ failed | **0.0589/0.0455**@ep15 |
 
 # 融合 embed512 3-seed（R@20/NDCG@20，view_mix=nn + win30 退火）
 | 数据集 | seed42 | seed43 | seed44 | 3-seed 均值 |
