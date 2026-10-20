@@ -2,7 +2,7 @@
   "rows": [
     {
       "dataset": "ifashion",
-      "density": 5.1e-05,
+      "density": 6.566736916051984e-05,
       "fusion": 0.1155,
       "lgn": 0.0953,
       "delta_pct": 21.196222455403998,
@@ -11,7 +11,7 @@
     },
     {
       "dataset": "yelp_full",
-      "density": 7.5e-05,
+      "density": 9.689931261641874e-05,
       "fusion": 0.103,
       "lgn": 0.0682,
       "delta_pct": 51.02639296187683,
@@ -20,7 +20,7 @@
     },
     {
       "dataset": "amazon-kindle",
-      "density": 0.000112,
+      "density": 0.00013998111827789487,
       "fusion": 0.2516,
       "lgn": 0.1013,
       "delta_pct": 148.37117472852913,
@@ -29,7 +29,7 @@
     },
     {
       "dataset": "amazon-book",
-      "density": 0.00062,
+      "density": 0.0006188468344849981,
       "fusion": 0.0551,
       "lgn": 0.0411,
       "delta_pct": 34.06326034063262,
@@ -38,7 +38,7 @@
     },
     {
       "dataset": "amazon-beauty",
-      "density": 0.000651,
+      "density": 0.0007338763646161968,
       "fusion": 0.1105,
       "lgn": 0.078,
       "delta_pct": 41.666666666666664,
@@ -47,7 +47,7 @@
     },
     {
       "dataset": "gowalla",
-      "density": 0.00084,
+      "density": 0.0008396216228570437,
       "fusion": 0.188,
       "lgn": 0.183,
       "delta_pct": 2.7322404371584725,
@@ -55,17 +55,8 @@
       "note": "R24 3-seed，+2.7%"
     },
     {
-      "dataset": "tmall",
-      "density": 0.00119,
-      "fusion": 0.0991,
-      "lgn": 0.0651,
-      "delta_pct": 52.22734254992318,
-      "tag": "early",
-      "note": "融合 ep18 vs lgn ep30(升)，+56% 早期"
-    },
-    {
       "dataset": "yelp2018",
-      "density": 0.0013,
+      "density": 0.0012958757851778645,
       "fusion": 0.0709,
       "lgn": 0.0649,
       "delta_pct": 9.244992295839761,
@@ -73,8 +64,17 @@
       "note": "R24 3-seed，+9.2%"
     },
     {
+      "dataset": "tmall",
+      "density": 0.0013201266623358093,
+      "fusion": 0.0991,
+      "lgn": 0.0651,
+      "delta_pct": 52.22734254992318,
+      "tag": "early",
+      "note": "融合 ep18 vs lgn ep30(升)，+56% 早期"
+    },
+    {
       "dataset": "douban-book",
-      "density": 0.0017,
+      "density": 0.0021294456495759766,
       "fusion": 0.1984,
       "lgn": 0.1897,
       "delta_pct": 4.58618871903004,
@@ -83,16 +83,16 @@
     },
     {
       "dataset": "ml-10m",
-      "density": 0.0147,
+      "density": 0.01473441946669947,
       "fusion": null,
       "lgn": null,
       "delta_pct": null,
       "tag": "early",
-      "note": "在途：fusion ep6=0.1880 爬升中"
+      "note": "在途：fusion ep6=0.1880 爬升中（训练随 scnumath 被封丢失）"
     },
     {
       "dataset": "lastfm-2k",
-      "density": 0.023,
+      "density": 0.023033301465725336,
       "fusion": 0.4164,
       "lgn": 0.3977,
       "delta_pct": 4.702036711088759,
@@ -101,7 +101,7 @@
     },
     {
       "dataset": "ml-1m",
-      "density": 0.0507,
+      "density": 0.05071197131597124,
       "fusion": 0.2535,
       "lgn": 0.2621,
       "delta_pct": -3.281190385349102,
@@ -110,7 +110,7 @@
     },
     {
       "dataset": "jester",
-      "density": 0.725,
+      "density": 0.7246747788496177,
       "fusion": 0.946,
       "lgn": 0.9458,
       "delta_pct": 0.0211461196870351,
@@ -122,6 +122,7 @@
     0.023,
     0.0507
   ],
-  "rho_flip_midpoint": 0.03685,
-  "prescription": "ssl_reg=0.1 if density<rho_flip else 0.0"
+  "rho_flip_midpoint": 0.034148206395065606,
+  "prescription": "ssl_reg=0.1 if density<rho_flip else 0.01",
+  "note": "R94 修正：密度与 §2.2 定义一致（总交互/U*I），处方修正为 0.01（R64/R80 决定性扫描定稿），log-中点 ρ_flip≈3.42%。"
 }
