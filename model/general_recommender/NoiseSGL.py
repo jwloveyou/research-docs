@@ -55,6 +55,18 @@ class _LightGCN(nn.Module):
         # R1/R15/R18 'static wins' law. Default None/0.0 = off (backward compatible).
         self.item_sem = None
         self.sem_lam = 0.0
+        # Round-91: FROZEN LLM semantic USER features (task #6 / semantic axis,
+        # user-side counterpart of item_sem). user_sem is a plain (non-Parameter)
+        # tensor [num_users, embed_dim] built by util/build_semantic_features.py
+        # --side user (lastfm: user-applied tags; ml-1m: gender/age/occupation).
+        # It is added to the layer-0 USER embedding inside _forward_gcn, symmetric to
+        # item_sem (which offsets items), BEFORE the shared GCN operator and SSL noise.
+        # Motivation: Turning Semantics into Topology (arXiv:2602.21099) observes that
+        # embedding-based methods rely on *unilateral* (item-side) feature augmentation;
+        # a user-side prior completes the semantic axis. Static & parameter-free
+        # (respects R1/R15/R18 'static wins' law). Default None/0.0 = off.
+        self.user_sem = None
+        self.user_sem_lam = 0.0
         # Round-25: main-branch embedding (input/node) dropout as an overfitting
         # regulariser for the BPR fine-tune phase. Standard GNN regularisation
         # (Srivastava et al. 2014; NGCF message-dropout; SGL node-dropout aug_type=nd)
@@ -1323,6 +1335,18 @@ class _LightGCN(nn.Module):
     def _forward_gcn(self, norm_adj, return_all=False, perturb=False, eps=0.0, use_freq=None,
                      use_gl=False, apply_proto=False, apply_dropout=False):
         ego_embeddings = torch.cat([self.user_embeddings.weight, self.item_embeddings.weight], dim=0)
+        if self.user_sem is not None and self.user_sem_lam != 0.0:
+            # Round-91: inject the FROZEN semantic prior into the layer-0 USER
+            # embedding (the user-side counterpart of the item-side injection below).
+            # user_sem is non-Parameter and moved to the embedding device on load, so it
+            # never receives gradients / enters the optimizer. Applied before
+            # dropout/SSL-noise/propagation so main branch and noise views share the
+            # identical operator (R4/R6/R7).
+            usem = self.user_sem.to(ego_embeddings.device)
+            ego_embeddings = torch.cat([
+                ego_embeddings[:self.num_users] + self.user_sem_lam * usem,
+                ego_embeddings[self.num_users:],
+            ], dim=0)
         if self.item_sem is not None and self.sem_lam != 0.0:
             # Round-47: inject the FROZEN LLM semantic prior into the layer-0 item
             # embedding (users get no semantic offset). item_sem is non-Parameter and
@@ -1669,6 +1693,15 @@ class NoiseSGL(AbstractRecommender):
         self.sem_emb = int(config["sem_emb"]) if "sem_emb" in config else 0
         assert self.sem_emb in (0, 1)
         self.sem_lam = float(config["sem_lam"]) if "sem_lam" in config else 1.0
+        # Round-91: user-side frozen semantic feature injection (5th-component
+        # candidate, semantic axis). user_sem_emb=1 loads dataset/<ds>/user_sem.npy
+        # (built by util/build_semantic_features.py --side user) and adds
+        # user_sem_lam * user_sem to the layer-0 USER embedding. Static, parameter-free,
+        # orthogonal to noise/SSL-anneal/capacity/item-sem and every structural/
+        # optimizer candidate. Default 0 = off (backward compatible).
+        self.user_sem_emb = int(config["user_sem_emb"]) if "user_sem_emb" in config else 0
+        assert self.user_sem_emb in (0, 1)
+        self.user_sem_lam = float(config["user_sem_lam"]) if "user_sem_lam" in config else 1.0
         # Round-3: SimGCF frequency signal scaler (arXiv:2512.15744)
         self.freq_scaler = int(config["freq_scaler"]) if "freq_scaler" in config else 0
         self.freq_type = config["freq_type"] if "freq_type" in config else "low"
@@ -2051,6 +2084,28 @@ class NoiseSGL(AbstractRecommender):
             else:
                 self.logger.warning("[sem] sem_emb=1 but %s missing; run "
                                     "util/build_semantic_features.py first" % sem_path)
+        if self.user_sem_emb:
+            # Round-91: load the frozen semantic USER features (user-side counterpart
+            # of item_sem) and attach them as a plain (non-Parameter) tensor on
+            # self.device. Same shape/device/backward-compat conventions as item_sem.
+            usem_path = os.path.join(self.config.data_dir, self.dataset_name, "user_sem.npy")
+            if os.path.exists(usem_path):
+                user_sem = np.load(usem_path)
+                assert user_sem.shape[0] == self.num_users, (
+                    "user_sem.npy has %d rows but dataset has %d users"
+                    % (user_sem.shape[0], self.num_users))
+                assert user_sem.shape[1] == self.emb_size, (
+                    "user_sem.npy has %d dims but embed_size=%d"
+                    % (user_sem.shape[1], self.emb_size))
+                self.lightgcn.user_sem = torch.from_numpy(
+                    user_sem.astype(np.float32)).to(self.device)
+                self.lightgcn.user_sem_lam = self.user_sem_lam
+                self.logger.info("[sem] loaded user_sem %s -> shape=%s lam=%.2f" % (
+                    usem_path, user_sem.shape, self.user_sem_lam))
+            else:
+                self.logger.warning("[sem] user_sem_emb=1 but %s missing; run "
+                                    "util/build_semantic_features.py --side user first"
+                                    % usem_path)
         if self.use_gl:
             self.lightgcn.gl_U = torch.from_numpy(self.gl_U).float().to(self.device)
             self.lightgcn.gl_S = torch.from_numpy(self.gl_S).float().to(self.device)

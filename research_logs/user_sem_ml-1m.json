@@ -1,0 +1,35 @@
+{
+  "dataset": "ml-1m",
+  "n_users": 6040,
+  "embed_size": 256,
+  "zero_feature_rows": 0,
+  "global_eff_rank": 25.374338288451373,
+  "buckets": {
+    "cold": {
+      "n": 2034,
+      "eff_rank": 25.405026180434362,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.15003784000873566,
+      "mean_degree": 28.16764995083579
+    },
+    "mid": {
+      "n": 1998,
+      "eff_rank": 25.160599680916395,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.15277501940727234,
+      "mean_degree": 79.04554554554555
+    },
+    "head": {
+      "n": 2008,
+      "eff_rank": 25.163114402561327,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.16241846978664398,
+      "mean_degree": 290.6399402390438
+    }
+  },
+  "semantic_collab_jaccard": {
+    "cold": 0.031191099051151944,
+    "mid": 0.052982668790149685,
+    "head": 0.07183124424617232
+  }
+}

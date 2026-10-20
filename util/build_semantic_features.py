@@ -104,6 +104,19 @@ def reconstruct_org_item_ids(ds):
     return np.unique(pairs[:, 1]).astype(np.int64)
 
 
+def reconstruct_org_user_ids(ds):
+    """Return the sorted unique org user ids surviving 10-core filtering.
+
+    Symmetric to reconstruct_org_item_ids: prepare_new_datasets.py remaps the user
+    column via np.unique(pairs[:,0]) (sorted ascending) -> 0..n_users-1. We rebuild
+    the same sorted org-user list deterministically (seed-independent).
+    """
+    loader = {"ml-1m": load_ml1m_pairs,
+              "ml-10m": load_ml10m_pairs}.get(ds, load_lastfm_pairs)
+    pairs = k_core(loader(), CORE)
+    return np.unique(pairs[:, 0]).astype(np.int64)
+
+
 # ---------------------------------------------------------------- text sources
 def load_lastfm_artist_tags():
     """org artist id -> (name, list of tag strings)."""
@@ -201,6 +214,75 @@ def load_ml10m_item_text():
     return id2text
 
 
+def load_lastfm_user_tags():
+    """org user id -> (label, list of tag strings) from user_taggedartists.dat.
+
+    lastfm-2k records which tags a user applied to which artist. We aggregate all
+    tag VALUES a user has ever applied (across all artists) into one per-user tag
+    vocabulary -- the user-side counterpart of the item-side artist-tag features.
+    """
+    id2tag = {}
+    with open(os.path.join(RAW, "tags.dat"), encoding="latin-1") as f:
+        header = True
+        for line in f:
+            if header:
+                header = False
+                continue
+            p = line.strip().split("\t")
+            if len(p) >= 2:
+                try:
+                    id2tag[int(p[0])] = p[1].lower()
+                except ValueError:
+                    continue
+
+    user_tags = {}
+    with open(os.path.join(RAW, "user_taggedartists.dat"), encoding="latin-1") as f:
+        header = True
+        for line in f:
+            if header:
+                header = False
+                continue
+            p = line.strip().split("\t")
+            if len(p) < 3:
+                continue
+            try:
+                user = int(p[0])
+                tag = int(p[2])
+            except ValueError:
+                continue
+            tagname = id2tag.get(tag)
+            if tagname:
+                user_tags.setdefault(user, set()).add(tagname)
+
+    return {u: ("user%d" % u, sorted(t)) for u, t in user_tags.items()}
+
+
+def load_ml1m_user_text():
+    """org user id -> (label, list of demographic tags) from users.dat.
+
+    users.dat: UserID::Gender::Age::Occupation::Zip-code. Gender/age/occupation are
+    coarse but meaningful demographic priors for a CF user embedding (the user-side
+    counterpart of the item-side title/genre features). Zip-code is dropped (too
+    sparse / quasi-identifying and not a semantic attribute).
+    """
+    id2text = {}
+    with open(os.path.join(RAW, "ml-1m", "users.dat"), encoding="latin-1") as f:
+        for line in f:
+            p = line.strip().split("::")
+            if len(p) < 4:
+                continue
+            try:
+                uid = int(p[0])
+            except ValueError:
+                continue
+            gender = p[1].strip().lower()
+            age = p[2].strip().lower()
+            occ = p[3].strip().lower()
+            tags = ["gender:" + gender, "age:" + age, "occupation:" + occ]
+            id2text[uid] = ("user%d" % uid, tags)
+    return id2text
+
+
 # ---------------------------------------------------------------- encoding
 def build_tfidf(texts, min_df=1):
     """texts: list of (name, [tags]). Returns tfidf matrix + vocab list."""
@@ -242,6 +324,8 @@ def main():
     ap.add_argument("--datasets", default="ml-1m,lastfm-2k")
     ap.add_argument("--embed_size", type=int, default=256)
     ap.add_argument("--llm_json", default=None, help="optional LLM enrichment json")
+    ap.add_argument("--side", default="item", choices=["item", "user"],
+                    help="item = item_sem.npy (default, R47); user = user_sem.npy (R91)")
     args = ap.parse_args()
 
     llm = {}
@@ -251,23 +335,36 @@ def main():
 
     for ds in args.datasets.split(","):
         ds = ds.strip()
-        org_ids = reconstruct_org_item_ids(ds)
-        n_items = len(org_ids)
-
-        if ds == "ml-1m":
-            id2text = load_ml1m_item_text()
-        elif ds == "ml-10m":
-            id2text = load_ml10m_item_text()
+        if args.side == "item":
+            org_ids = reconstruct_org_item_ids(ds)
+            n_ents = len(org_ids)
+            if ds == "ml-1m":
+                id2text = load_ml1m_item_text()
+            elif ds == "ml-10m":
+                id2text = load_ml10m_item_text()
+            else:
+                id2name, id2tags = load_lastfm_artist_tags()
+                id2text = {a: (id2name.get(a, "artist%d" % a), id2tags.get(a, []))
+                           for a in org_ids}
+            default_label = "item%d"
+            out_name = "item_sem.npy"
+            meta_key = "n_items"
         else:
-            id2name, id2tags = load_lastfm_artist_tags()
-            id2text = {a: (id2name.get(a, "artist%d" % a), id2tags.get(a, []))
-                       for a in org_ids}
+            org_ids = reconstruct_org_user_ids(ds)
+            n_ents = len(org_ids)
+            if ds == "ml-1m":
+                id2text = load_ml1m_user_text()
+            else:
+                id2text = load_lastfm_user_tags()
+            default_label = "user%d"
+            out_name = "user_sem.npy"
+            meta_key = "n_users"
 
         texts = []
         n_native_tagged = 0
         n_llm_tagged = 0
         for oid in org_ids:
-            title, tags = id2text.get(int(oid), ("item%d" % oid, []))
+            title, tags = id2text.get(int(oid), (default_label % oid, []))
             native = list(tags)
             if native:
                 n_native_tagged += 1
@@ -278,31 +375,32 @@ def main():
 
         X, vocab = build_tfidf(texts)
         P = frozen_projection(len(vocab), args.embed_size)
-        item_sem = X @ P  # [n_items, embed_dim]
+        sem = X @ P  # [n_ents, embed_dim]
         # re-normalise projected rows (projection keeps ~unit norm for non-zero rows)
-        norm = np.linalg.norm(item_sem, axis=1, keepdims=True)
-        item_sem = np.where(norm > 0, item_sem / np.maximum(norm, 1e-12), item_sem)
+        norm = np.linalg.norm(sem, axis=1, keepdims=True)
+        sem = np.where(norm > 0, sem / np.maximum(norm, 1e-12), sem)
 
         out_dir = os.path.join(BASE, ds)
         os.makedirs(out_dir, exist_ok=True)
-        np.save(os.path.join(out_dir, "item_sem.npy"), item_sem.astype(np.float32))
+        np.save(os.path.join(out_dir, out_name), sem.astype(np.float32))
         meta = {
             "dataset": ds,
-            "n_items": n_items,
+            "side": args.side,
+            meta_key: n_ents,
             "embed_size": args.embed_size,
             "vocab_size": len(vocab),
             "top_vocab": vocab[:40],
             "n_native_tagged": n_native_tagged,
             "n_llm_tagged": n_llm_tagged,
-            "zero_feature_rows": int((np.linalg.norm(item_sem, axis=1) < 1e-6).sum()),
+            "zero_feature_rows": int((np.linalg.norm(sem, axis=1) < 1e-6).sum()),
             "projection": "frozen_seeded_gaussian_seed=%d" % SEED,
         }
-        with open(os.path.join(out_dir, "item_sem_meta.json"), "w") as f:
+        with open(os.path.join(out_dir, out_name.replace(".npy", "_meta.json")), "w") as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
-        print("[sem] %s: items=%d vocab=%d native_tagged=%d llm_tagged=%d zero_rows=%d"
-              % (ds, n_items, len(vocab), n_native_tagged, n_llm_tagged,
-                 meta["zero_feature_rows"]))
-        print("[sem]   -> %s" % os.path.join(out_dir, "item_sem.npy"))
+        print("[sem-%s] %s: %s=%d vocab=%d native_tagged=%d llm_tagged=%d zero_rows=%d"
+              % (args.side, ds, meta_key, n_ents, len(vocab), n_native_tagged,
+                 n_llm_tagged, meta["zero_feature_rows"]))
+        print("[sem-%s]   -> %s" % (args.side, os.path.join(out_dir, out_name)))
 
 
 if __name__ == "__main__":

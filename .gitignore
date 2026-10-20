@@ -12,3 +12,5 @@ dataset/*/*.test
 dataset/_raw/
 dataset/*/item_sem.npy
 dataset/*/item_sem_meta.json
+dataset/*/user_sem.npy
+dataset/*/user_sem_meta.json

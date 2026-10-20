@@ -1,0 +1,35 @@
+{
+  "dataset": "lastfm-2k",
+  "n_users": 1797,
+  "embed_size": 256,
+  "zero_feature_rows": 0,
+  "global_eff_rank": 243.8354266192534,
+  "buckets": {
+    "cold": {
+      "n": 599,
+      "eff_rank": 234.43029700759806,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.017417794093489647,
+      "mean_degree": 17.781302170283805
+    },
+    "mid": {
+      "n": 679,
+      "eff_rank": 233.75013685742564,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.02817605435848236,
+      "mean_degree": 29.359351988217966
+    },
+    "head": {
+      "n": 519,
+      "eff_rank": 227.27694123629163,
+      "eff_rank_dim": 256,
+      "mean_pairwise_cos": 0.03430216386914253,
+      "mean_degree": 37.213872832369944
+    }
+  },
+  "semantic_collab_jaccard": {
+    "cold": 0.027528591985669225,
+    "mid": 0.04845699129662564,
+    "head": 0.06958763930216282
+  }
+}
