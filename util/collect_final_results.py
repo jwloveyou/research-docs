@@ -283,6 +283,50 @@ def main():
     print(f"\n[JSON] {outpath}")
     print(f"[MD]   {mdpath}")
 
+    # 报告补丁候选：把 研究总报告.md §2.3/§2.1/§3.2 的「重跑中」占位符替换为终值。
+    # 仅对 DONE 的 run 输出 old->new，保证「跑出什么就替换什么」，不凭空造值。
+    # 占位符单元显式登记（只有这些是 R82 待补的空白格；其余格已有终值）。
+    PLACEHOLDER = {
+        ("gowalla", "xsimgcl"):    "重跑中（R82）",
+        ("yelp2018", "simgcl"):    "重跑中（R82）",
+        ("yelp2018", "xsimgcl"):   "重跑中（R82）",
+        ("amazon-book", "lightgcn"): "重跑中（R82，10-20 OOM）",
+        ("amazon-book", "simgcl"): "重跑中（R82）",
+        ("amazon-book", "xsimgcl"): "重跑中（R82）",
+    }
+    print("\n# REPORT PATCH CANDIDATES（研究总报告.md 占位符 -> 终值；仅 DONE 项）\n")
+    patch = {}
+    for (ds, tag), old in PLACEHOLDER.items():
+        r = pick(ds, tag)
+        if r is None or r["status"] != "DONE":
+            continue
+        new = f"{fmt(r['best'])}@ep{r['best']['epoch']}"
+        patch[(ds, tag)] = (old, new)
+        print(f"  §2.3 [{ds}][{tag}]  {old}  ->  {new}")
+
+    # amazon embed512 s44（补齐 §2.1 与 §3.2 的 3-seed）
+    am_s44 = results.get("amazon-book_emb512_s44")
+    if am_s44 is not None and am_s44["status"] == "DONE" and "recall" in am_s44["best"]:
+        s42 = FUSION_SEED42["amazon-book"]
+        s43 = results.get("amazon-book_emb512_s43", {}).get("best") or {}
+        s44 = am_s44["best"]
+        rec = [s42["recall"], s43.get("recall"), s44["recall"]]
+        ndc = [s42["ndcg"], s43.get("ndcg"), s44["ndcg"]]
+        if all(v is not None for v in rec) and all(v is not None for v in ndc):
+            mean = f"{sum(rec)/3:.5f}/{sum(ndc)/3:.5f}"
+            old_21 = "amazon 0.0589/0.0588/（s44 在途，2-seed 均值 0.05885/0.04545）"
+            new_21 = (f"amazon {s42['recall']:.4f}/{s43['recall']:.4f}/"
+                      f"{s44['recall']:.4f}（均值 {mean}）")
+            print(f"  §2.1/§3.2 [amazon embed512 s44]\n      {old_21}\n      ->  {new_21}")
+            patch[("amazon-book", "emb512_s44")] = (old_21, new_21)
+
+    # 落盘 patch 候选（供 patch_final_report.py 或人工核用）
+    patchpath = os.path.join(LOGDIR, "final_report_patch.json")
+    with open(patchpath, "w", encoding="utf-8") as f:
+        json.dump({f"{k[0]}|{k[1]}": list(v) for k, v in patch.items()}, f,
+                  ensure_ascii=False, indent=2)
+    print(f"\n[PATCH] {patchpath} ({len(patch)} replacements)")
+
 
 if __name__ == "__main__":
     main()
