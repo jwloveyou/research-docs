@@ -66,10 +66,11 @@ run init2        "--init_scale=2.0"
 echo "R93_LOST_CANDIDATES_ALLDONE $(date)" >> "$L"
 
 # 简易汇总：把每个候选的 best R@20 与 ctrl 对比，自动标记 >= ctrl+0.001 的候选
+# （先剥时间戳前缀再取浮点，与 collect_final_results.extract_best 同法）
 echo "=== summary (best R@20 / NDCG@20) ===" >> "$L"
 for f in research_logs/r93_gowalla_*.log; do
   tag=$(basename "$f" .log | sed 's/r93_gowalla_//')
-  vals=$(grep "best_result" -A3 "$f" | tail -3 | awk '{print $2, $3}' | paste -sd' ' -)
+  vals=$(grep -A2 "best_result" "$f" | tail -1 | sed 's/^[0-9-]* [0-9:.]*: *//' | awk '{printf "%s %s", $2, $3}')
   echo "$tag  $vals" >> "$L"
 done
 echo "(对照：历史 ctrl=0.1877/0.1596@ep60, gowalla seed噪声 ±0.0008)" >> "$L"
