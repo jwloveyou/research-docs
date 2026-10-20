@@ -167,23 +167,22 @@ FUSION_SEED42 = {
 
 
 def build_registry():
-    baseline_progress = parse_progress(os.path.join(LOGDIR, "r80_light_baselines_masmath_progress.txt"))
-    r82_progress = parse_progress(os.path.join(LOGDIR, "r82_rerun_failed_progress.txt"))
-    r81_progress = parse_progress(os.path.join(LOGDIR, "r81_embed512_3seed_progress.txt"))
-    r59_progress = parse_progress(os.path.join(LOGDIR, "r59_embed512_progress.txt"))
-
-    # 合并 progress：r82 会覆盖 r80 的同名 key（以较新者为准）
-    combined = {}
-    for pm in (baseline_progress, r59_progress, r81_progress, r82_progress):
-        for k, v in pm.items():
-            # r82 里 key 与 r80 同名（dataset_tag），后写入者覆盖
-            combined[k] = v
+    # 每个 source 用【自己的 progress 文件】判定状态——不能合并后共用：
+    # 否则 r82 尚未 START 的 rerun 项会错误继承 r80 同名 key 的 FAILED 状态
+    # （例：r82 amazon-book_lightgcn 还没轮到跑，却显示「failed」）。
+    progress_maps = {
+        "r80": parse_progress(os.path.join(LOGDIR, "r80_light_baselines_masmath_progress.txt")),
+        "r82": parse_progress(os.path.join(LOGDIR, "r82_rerun_failed_progress.txt")),
+        "r81": parse_progress(os.path.join(LOGDIR, "r81_embed512_3seed_progress.txt")),
+        "r59": parse_progress(os.path.join(LOGDIR, "r59_embed512_progress.txt")),
+    }
 
     results = {}
     for source, key, tag, ds, seed in BASELINE_RUNS + EMB512_RUNS:
         logpath = os.path.join(LOGDIR, f"{source}_{ds}_{tag}.log")
         best = extract_best(logpath)
-        st = status_of(key, combined, best)
+        st = status_of(key, progress_maps[source], best)
+        # r82 与 r80 同名 key 时，列表里 r82 在 r80 之后写入，自然覆盖（r82 优先）
         results[key] = {
             "source": source, "tag": tag, "dataset": ds, "seed": seed,
             "log": os.path.relpath(logpath, ROOT),

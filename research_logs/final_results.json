@@ -34,7 +34,7 @@
       "dataset": "amazon-book",
       "seed": null,
       "log": "research_logs/r82_amazon-book_lightgcn.log",
-      "status": "FAILED",
+      "status": "MISSING",
       "best": null
     },
     "gowalla_sgl": {
@@ -125,7 +125,7 @@
       "dataset": "gowalla",
       "seed": null,
       "log": "research_logs/r82_gowalla_xsimgcl.log",
-      "status": "FAILED",
+      "status": "MISSING",
       "best": null
     },
     "yelp2018_xsimgcl": {
@@ -134,7 +134,7 @@
       "dataset": "yelp2018",
       "seed": null,
       "log": "research_logs/r82_yelp2018_xsimgcl.log",
-      "status": "FAILED",
+      "status": "MISSING",
       "best": null
     },
     "amazon-book_xsimgcl": {
@@ -143,7 +143,7 @@
       "dataset": "amazon-book",
       "seed": null,
       "log": "research_logs/r82_amazon-book_xsimgcl.log",
-      "status": "FAILED",
+      "status": "MISSING",
       "best": null
     },
     "gowalla_emb512": {
@@ -249,7 +249,7 @@
       "dataset": "amazon-book",
       "seed": 44,
       "log": "research_logs/r82_amazon-book_emb512_s44.log",
-      "status": "FAILED",
+      "status": "MISSING",
       "best": null
     }
   },
