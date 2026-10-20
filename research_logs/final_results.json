@@ -1,0 +1,268 @@
+{
+  "runs": {
+    "gowalla_lightgcn": {
+      "source": "r80",
+      "tag": "lightgcn",
+      "dataset": "gowalla",
+      "seed": null,
+      "log": "research_logs/r80_gowalla_lightgcn.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 296,
+        "precision": 0.054,
+        "recall": 0.1761,
+        "ndcg": 0.151
+      }
+    },
+    "yelp2018_lightgcn": {
+      "source": "r80",
+      "tag": "lightgcn",
+      "dataset": "yelp2018",
+      "seed": null,
+      "log": "research_logs/r80_yelp2018_lightgcn.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 100,
+        "precision": 0.0248,
+        "recall": 0.055,
+        "ndcg": 0.0448
+      }
+    },
+    "amazon-book_lightgcn": {
+      "source": "r82",
+      "tag": "lightgcn",
+      "dataset": "amazon-book",
+      "seed": null,
+      "log": "research_logs/r82_amazon-book_lightgcn.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "gowalla_sgl": {
+      "source": "r80",
+      "tag": "sgl",
+      "dataset": "gowalla",
+      "seed": null,
+      "log": "research_logs/r80_gowalla_sgl.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 28,
+        "precision": 0.0548,
+        "recall": 0.1788,
+        "ndcg": 0.1504
+      }
+    },
+    "yelp2018_sgl": {
+      "source": "r80",
+      "tag": "sgl",
+      "dataset": "yelp2018",
+      "seed": null,
+      "log": "research_logs/r80_yelp2018_sgl.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 20,
+        "precision": 0.0301,
+        "recall": 0.0671,
+        "ndcg": 0.0555
+      }
+    },
+    "amazon-book_sgl": {
+      "source": "r80",
+      "tag": "sgl",
+      "dataset": "amazon-book",
+      "seed": null,
+      "log": "research_logs/r80_amazon-book_sgl.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 21,
+        "precision": 0.0189,
+        "recall": 0.0461,
+        "ndcg": 0.036
+      }
+    },
+    "gowalla_simgcl": {
+      "source": "r80",
+      "tag": "simgcl",
+      "dataset": "gowalla",
+      "seed": null,
+      "log": "research_logs/r80_gowalla_simgcl.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 18,
+        "precision": 0.0547,
+        "recall": 0.1781,
+        "ndcg": 0.1498
+      }
+    },
+    "yelp2018_simgcl": {
+      "source": "r82",
+      "tag": "simgcl",
+      "dataset": "yelp2018",
+      "seed": null,
+      "log": "research_logs/r82_yelp2018_simgcl.log",
+      "status": "RUNNING",
+      "best": {
+        "epoch": null,
+        "status": "NO_VALUES"
+      }
+    },
+    "amazon-book_simgcl": {
+      "source": "r82",
+      "tag": "simgcl",
+      "dataset": "amazon-book",
+      "seed": null,
+      "log": "research_logs/r82_amazon-book_simgcl.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "gowalla_xsimgcl": {
+      "source": "r82",
+      "tag": "xsimgcl",
+      "dataset": "gowalla",
+      "seed": null,
+      "log": "research_logs/r82_gowalla_xsimgcl.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "yelp2018_xsimgcl": {
+      "source": "r82",
+      "tag": "xsimgcl",
+      "dataset": "yelp2018",
+      "seed": null,
+      "log": "research_logs/r82_yelp2018_xsimgcl.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "amazon-book_xsimgcl": {
+      "source": "r82",
+      "tag": "xsimgcl",
+      "dataset": "amazon-book",
+      "seed": null,
+      "log": "research_logs/r82_amazon-book_xsimgcl.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "gowalla_emb512": {
+      "source": "r59",
+      "tag": "emb512",
+      "dataset": "gowalla",
+      "seed": 42,
+      "log": "research_logs/r59_gowalla_emb512.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "yelp2018_emb512": {
+      "source": "r59",
+      "tag": "emb512",
+      "dataset": "yelp2018",
+      "seed": 42,
+      "log": "research_logs/r59_yelp2018_emb512.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "amazon-book_emb512": {
+      "source": "r59",
+      "tag": "emb512",
+      "dataset": "amazon-book",
+      "seed": 42,
+      "log": "research_logs/r59_amazon-book_emb512.log",
+      "status": "FAILED",
+      "best": null
+    },
+    "gowalla_emb512_s43": {
+      "source": "r81",
+      "tag": "emb512_s43",
+      "dataset": "gowalla",
+      "seed": 43,
+      "log": "research_logs/r81_gowalla_emb512_s43.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 30,
+        "precision": 0.0586,
+        "recall": 0.189,
+        "ndcg": 0.1593
+      }
+    },
+    "gowalla_emb512_s44": {
+      "source": "r81",
+      "tag": "emb512_s44",
+      "dataset": "gowalla",
+      "seed": 44,
+      "log": "research_logs/r81_gowalla_emb512_s44.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 31,
+        "precision": 0.0585,
+        "recall": 0.1894,
+        "ndcg": 0.1596
+      }
+    },
+    "yelp2018_emb512_s43": {
+      "source": "r81",
+      "tag": "emb512_s43",
+      "dataset": "yelp2018",
+      "seed": 43,
+      "log": "research_logs/r81_yelp2018_emb512_s43.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 4,
+        "precision": 0.0319,
+        "recall": 0.0717,
+        "ndcg": 0.0589
+      }
+    },
+    "yelp2018_emb512_s44": {
+      "source": "r81",
+      "tag": "emb512_s44",
+      "dataset": "yelp2018",
+      "seed": 44,
+      "log": "research_logs/r81_yelp2018_emb512_s44.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 5,
+        "precision": 0.032,
+        "recall": 0.0719,
+        "ndcg": 0.0591
+      }
+    },
+    "amazon-book_emb512_s43": {
+      "source": "r81",
+      "tag": "emb512_s43",
+      "dataset": "amazon-book",
+      "seed": 43,
+      "log": "research_logs/r81_amazon-book_emb512_s43.log",
+      "status": "DONE",
+      "best": {
+        "epoch": 13,
+        "precision": 0.0229,
+        "recall": 0.0588,
+        "ndcg": 0.0454
+      }
+    },
+    "amazon-book_emb512_s44": {
+      "source": "r82",
+      "tag": "emb512_s44",
+      "dataset": "amazon-book",
+      "seed": 44,
+      "log": "research_logs/r82_amazon-book_emb512_s44.log",
+      "status": "FAILED",
+      "best": null
+    }
+  },
+  "fusion_seed42": {
+    "gowalla": {
+      "recall": 0.1894,
+      "ndcg": 0.1596,
+      "epoch": 29
+    },
+    "yelp2018": {
+      "recall": 0.0716,
+      "ndcg": 0.0587,
+      "epoch": 4
+    },
+    "amazon-book": {
+      "recall": 0.0589,
+      "ndcg": 0.0455,
+      "epoch": 15
+    }
+  }
+}
