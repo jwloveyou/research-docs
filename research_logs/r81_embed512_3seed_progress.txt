@@ -1,2 +1,35 @@
 BEGIN 2026年 10月 19日 星期一 23:25:26 CST gpu=0
 START gowalla_emb512_s43 gpu=0 ep=60 2026年 10月 19日 星期一 23:25:26 CST
+END   gowalla_emb512_s43 rc=0 2026年 10月 20日 星期二 03:09:51 CST
+--- gowalla_emb512_s43 best ---
+2026-10-20 03:09:50.562: best_result@epoch 30:
+
+2026-10-20 03:09:50.563: 		0.0586      	0.1890      	0.1593      
+START gowalla_emb512_s44 gpu=0 ep=60 2026年 10月 20日 星期二 03:09:51 CST
+END   gowalla_emb512_s44 rc=0 2026年 10月 20日 星期二 08:03:15 CST
+--- gowalla_emb512_s44 best ---
+2026-10-20 08:03:14.426: best_result@epoch 31:
+
+2026-10-20 08:03:14.426: 		0.0585      	0.1894      	0.1596      
+START yelp2018_emb512_s43 gpu=0 ep=20 2026年 10月 20日 星期二 08:03:15 CST
+END   yelp2018_emb512_s43 rc=0 2026年 10月 20日 星期二 10:37:10 CST
+--- yelp2018_emb512_s43 best ---
+2026-10-20 10:37:10.000: best_result@epoch 4:
+
+2026-10-20 10:37:10.000: 		0.0319      	0.0717      	0.0589      
+START yelp2018_emb512_s44 gpu=0 ep=20 2026年 10月 20日 星期二 10:37:10 CST
+END   yelp2018_emb512_s44 rc=0 2026年 10月 20日 星期二 12:31:57 CST
+--- yelp2018_emb512_s44 best ---
+2026-10-20 12:31:57.072: best_result@epoch 5:
+
+2026-10-20 12:31:57.072: 		0.0320      	0.0719      	0.0591      
+START amazon-book_emb512_s43 gpu=0 ep=15 2026年 10月 20日 星期二 12:31:57 CST
+END   amazon-book_emb512_s43 rc=0 2026年 10月 20日 星期二 17:34:03 CST
+--- amazon-book_emb512_s43 best ---
+2026-10-20 17:34:02.251: best_result@epoch 13:
+
+2026-10-20 17:34:02.252: 		0.0229      	0.0588      	0.0454      
+START amazon-book_emb512_s44 gpu=0 ep=15 2026年 10月 20日 星期二 17:34:03 CST
+END   amazon-book_emb512_s44 rc=1 2026年 10月 20日 星期二 19:13:17 CST
+--- amazon-book_emb512_s44 best ---
+ALLDONE 2026年 10月 20日 星期二 19:13:17 CST

@@ -1,2 +1,56 @@
 BEGIN 2026年 10月 19日 星期一 23:16:45 CST
 START gowalla_lightgcn gpu=0 ep=300 2026年 10月 19日 星期一 23:16:45 CST
+END   gowalla_lightgcn rc=0 2026年 10月 20日 星期二 04:35:31 CST
+--- gowalla_lightgcn best ---
+2026-10-20 04:35:30.268: best_result@epoch 296:
+
+2026-10-20 04:35:30.268: 		0.0540      	0.1761      	0.1510      
+START yelp2018_lightgcn gpu=0 ep=100 2026年 10月 20日 星期二 04:35:31 CST
+END   yelp2018_lightgcn rc=0 2026年 10月 20日 星期二 08:13:21 CST
+--- yelp2018_lightgcn best ---
+2026-10-20 08:13:20.495: best_result@epoch 100:
+
+2026-10-20 08:13:20.495: 		0.0248      	0.0550      	0.0448      
+START amazon-book_lightgcn gpu=0 ep=100 2026年 10月 20日 星期二 08:13:21 CST
+END   amazon-book_lightgcn rc=1 2026年 10月 20日 星期二 08:13:37 CST
+--- amazon-book_lightgcn best ---
+START gowalla_sgl gpu=0 ep=150 2026年 10月 20日 星期二 08:13:37 CST
+END   gowalla_sgl rc=0 2026年 10月 20日 星期二 11:32:47 CST
+--- gowalla_sgl best ---
+2026-10-20 11:32:47.159: best_result@epoch 28:
+
+2026-10-20 11:32:47.159: 		0.0548      	0.1788      	0.1504      
+START yelp2018_sgl gpu=0 ep=50 2026年 10月 20日 星期二 11:32:47 CST
+END   yelp2018_sgl rc=0 2026年 10月 20日 星期二 12:40:24 CST
+--- yelp2018_sgl best ---
+2026-10-20 12:40:24.227: best_result@epoch 20:
+
+2026-10-20 12:40:24.227: 		0.0301      	0.0671      	0.0555      
+START amazon-book_sgl gpu=0 ep=30 2026年 10月 20日 星期二 12:40:24 CST
+END   amazon-book_sgl rc=0 2026年 10月 20日 星期二 15:09:00 CST
+--- amazon-book_sgl best ---
+2026-10-20 15:08:59.535: best_result@epoch 21:
+
+2026-10-20 15:08:59.535: 		0.0189      	0.0461      	0.0360      
+START gowalla_simgcl gpu=0 ep=150 2026年 10月 20日 星期二 15:09:00 CST
+END   gowalla_simgcl rc=0 2026年 10月 20日 星期二 17:26:43 CST
+--- gowalla_simgcl best ---
+2026-10-20 17:26:42.789: best_result@epoch 18:
+
+2026-10-20 17:26:42.789: 		0.0547      	0.1781      	0.1498      
+START yelp2018_simgcl gpu=0 ep=50 2026年 10月 20日 星期二 17:26:43 CST
+END   yelp2018_simgcl rc=120 2026年 10月 20日 星期二 18:35:45 CST
+--- yelp2018_simgcl best ---
+START amazon-book_simgcl gpu=0 ep=30 2026年 10月 20日 星期二 18:35:45 CST
+END   amazon-book_simgcl rc=120 2026年 10月 20日 星期二 18:35:49 CST
+--- amazon-book_simgcl best ---
+START gowalla_xsimgcl gpu=0 ep=150 2026年 10月 20日 星期二 18:35:49 CST
+END   gowalla_xsimgcl rc=120 2026年 10月 20日 星期二 18:35:52 CST
+--- gowalla_xsimgcl best ---
+START yelp2018_xsimgcl gpu=0 ep=50 2026年 10月 20日 星期二 18:35:52 CST
+END   yelp2018_xsimgcl rc=120 2026年 10月 20日 星期二 18:35:54 CST
+--- yelp2018_xsimgcl best ---
+START amazon-book_xsimgcl gpu=0 ep=30 2026年 10月 20日 星期二 18:35:54 CST
+END   amazon-book_xsimgcl rc=120 2026年 10月 20日 星期二 18:35:57 CST
+--- amazon-book_xsimgcl best ---
+R80_LIGHT_BASELINES_ALLDONE 2026年 10月 20日 星期二 18:35:57 CST
