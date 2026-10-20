@@ -314,8 +314,10 @@ def main():
         ndc = [s42["ndcg"], s43.get("ndcg"), s44["ndcg"]]
         if all(v is not None for v in rec) and all(v is not None for v in ndc):
             mean = f"{sum(rec)/3:.5f}/{sum(ndc)/3:.5f}"
-            old_21 = "amazon 0.0589/0.0588/（s44 在途，2-seed 均值 0.05885/0.04545）"
-            new_21 = (f"amazon {s42['recall']:.4f}/{s43['recall']:.4f}/"
+            # 核心子串（§2.1 与 §3.2 各出现一次，前缀分别为 `amazon ` / `**`）——
+            # 只替换核心子串，保留两处各自的前后缀。
+            old_21 = "0.0589/0.0588/（s44 在途，2-seed 均值 0.05885/0.04545）"
+            new_21 = (f"{s42['recall']:.4f}/{s43['recall']:.4f}/"
                       f"{s44['recall']:.4f}（均值 {mean}）")
             print(f"  §2.1/§3.2 [amazon embed512 s44]\n      {old_21}\n      ->  {new_21}")
             patch[("amazon-book", "emb512_s44")] = (old_21, new_21)
