@@ -1,0 +1,20 @@
+BEGIN 2026年 10月 21日 星期三 13:51:50 CST gpu=0
+START lastfm-2k_uls0.5_s42 gpu=0 ep=100 2026年 10月 21日 星期三 13:51:50 CST
+END   lastfm-2k_uls0.5_s42 rc=0 2026年 10月 21日 星期三 13:53:54 CST
+--- lastfm-2k_uls0.5_s42 best ---
+2026-10-21 13:53:53.762: best_result@epoch 86:
+
+2026-10-21 13:53:53.762: 		0.1463      	0.4234      	0.3710      
+START lastfm-2k_uls1.0_s42 gpu=0 ep=100 2026年 10月 21日 星期三 13:53:54 CST
+END   lastfm-2k_uls1.0_s42 rc=0 2026年 10月 21日 星期三 13:55:59 CST
+--- lastfm-2k_uls1.0_s42 best ---
+2026-10-21 13:55:58.922: best_result@epoch 91:
+
+2026-10-21 13:55:58.922: 		0.1463      	0.4225      	0.3690      
+START lastfm-2k_uls2.0_s42 gpu=0 ep=100 2026年 10月 21日 星期三 13:55:59 CST
+END   lastfm-2k_uls2.0_s42 rc=0 2026年 10月 21日 星期三 13:58:05 CST
+--- lastfm-2k_uls2.0_s42 best ---
+2026-10-21 13:58:04.461: best_result@epoch 97:
+
+2026-10-21 13:58:04.461: 		0.1455      	0.4200      	0.3671      
+START ml-1m_uls0.5_s42 gpu=0 ep=100 2026年 10月 21日 星期三 13:58:05 CST

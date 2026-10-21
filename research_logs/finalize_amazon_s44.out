@@ -1,0 +1,11 @@
+BEGIN 2026年 10月 21日 星期三 02:21:46 CST [finalize_amazon_s44] waiting for amazon-book_emb512_s44 (or R82 ALLDONE)
+amazon-book_emb512_s44 marker detected 2026年 10月 21日 星期三 09:24:46 CST
+[finalize_amazon_s44] embed512 amazon-book R@20 seeds = [0.0589, 0.0588, 0.0589]
+[finalize_amazon_s44] embed512 amazon-book NDCG seeds = [0.0455, 0.0454, 0.0454]
+| 组件③ 容量 256→512（amazon-book R@20，3-seed） | 0.0589 | 0.0552 | +0.0037±0.0001 | 64.09 | 0.0002 | 37.00 | [+0.0036, +0.0038] | ✅ |
+| 组件③ 容量 256→512（amazon-book NDCG@20，3-seed） | 0.0454 | 0.0427 | +0.0027±0.0002 | 30.99 | 0.0010 | 17.89 | [+0.0026, +0.0029] | ✅ |
+  R@20: Δ=+0.0037 p=0.0002 零交叉=✅
+  NDCG: Δ=+0.0027 p=0.0010 零交叉=✅
+[finalize_amazon_s44] patched rows: R@20=1, NDCG=1, conclusion=1
+[finalize_amazon_s44] report patched; backup = /home/Yehaikun/research-work/研究总报告.md.bak_1792545887
+FINALIZE_AMAZON_S44_ALLDONE 2026年 10月 21日 星期三 09:24:47 CST
