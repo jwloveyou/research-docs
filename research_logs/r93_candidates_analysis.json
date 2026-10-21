@@ -1,0 +1,59 @@
+{
+  "ctrl": {
+    "cn": "控制组",
+    "status": "DONE",
+    "epoch": 60,
+    "recall": 0.1878,
+    "ndcg": 0.1597
+  },
+  "tailboost05": {
+    "cn": "tailboost γ=-0.5（LAGCL tail 增强）",
+    "status": "DONE",
+    "epoch": 60,
+    "recall": 0.1878,
+    "ndcg": 0.1597
+  },
+  "lr_cos100": {
+    "cn": "LR cosine 退火 win100 f0.1",
+    "status": "DONE",
+    "epoch": 60,
+    "recall": 0.1885,
+    "ndcg": 0.1604
+  },
+  "wd4": {
+    "cn": "weight_decay=1e-4（Adam 解耦）",
+    "status": "DONE",
+    "epoch": 10,
+    "recall": 0.1833,
+    "ndcg": 0.1545
+  },
+  "agg_shallow": {
+    "cn": "层聚合 shallow（浅层偏向）",
+    "status": "DONE",
+    "epoch": 60,
+    "recall": 0.1831,
+    "ndcg": 0.1549
+  },
+  "swa30": {
+    "cn": "SWA swa_start=30（权重平均）",
+    "status": "DONE",
+    "epoch": 48,
+    "recall": 0.1881,
+    "ndcg": 0.1599
+  },
+  "margin01": {
+    "cn": "bpr_margin=0.1",
+    "status": "DONE",
+    "epoch": 60,
+    "recall": 0.1877,
+    "ndcg": 0.1598
+  },
+  "dropedge09": {
+    "cn": "dropedge_keep=0.9（主分支边丢弃）",
+    "status": "MISSING"
+  },
+  "init2": {
+    "cn": "init_scale=2.0（嵌入初始化缩放）",
+    "status": "MISSING"
+  }
+}

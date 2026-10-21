@@ -2,3 +2,4 @@ BEGIN 2026年 10月 21日 星期三 02:34:50 CST [wait_r91_gpu0] waiting for R82
 R82_RERUN_ALLDONE detected 2026年 10月 21日 星期三 13:49:50 CST
 GPU0 idle (11MiB -> 11MiB) 2026年 10月 21日 星期三 13:51:50 CST
 launching run_r91_user_sem.sh 2026年 10月 21日 星期三 13:51:50 CST
+WAIT_R91_GPU0_DONE 2026年 10月 21日 星期三 15:26:01 CST

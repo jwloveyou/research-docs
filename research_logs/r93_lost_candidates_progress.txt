@@ -1,0 +1,44 @@
+BEGIN 2026年 10月 21日 星期三 15:31:54 CST gpu=0
+START ctrl gpu=0 ep=60  2026年 10月 21日 星期三 15:31:54 CST
+END   ctrl rc=0 2026年 10月 21日 星期三 16:34:56 CST
+--- ctrl best ---
+2026-10-21 16:34:56.097: best_result@epoch 60:
+
+2026-10-21 16:34:56.097: 		0.0580      	0.1878      	0.1597      
+START tailboost05 gpu=0 ep=60 --noise_deg_gamma=-0.5 2026年 10月 21日 星期三 16:34:56 CST
+END   tailboost05 rc=0 2026年 10月 21日 星期三 17:38:07 CST
+--- tailboost05 best ---
+2026-10-21 17:38:06.909: best_result@epoch 60:
+
+2026-10-21 17:38:06.909: 		0.0580      	0.1878      	0.1597      
+START lr_cos100 gpu=0 ep=60 --lr_anneal=2 --lr_anneal_epochs=100 --lr_floor=0.1 2026年 10月 21日 星期三 17:38:07 CST
+END   lr_cos100 rc=0 2026年 10月 21日 星期三 18:41:19 CST
+--- lr_cos100 best ---
+2026-10-21 18:41:18.452: best_result@epoch 60:
+
+2026-10-21 18:41:18.452: 		0.0583      	0.1885      	0.1604      
+START wd4 gpu=0 ep=60 --weight_decay=1e-4 2026年 10月 21日 星期三 18:41:19 CST
+END   wd4 rc=0 2026年 10月 21日 星期三 19:44:52 CST
+--- wd4 best ---
+2026-10-21 19:44:51.300: best_result@epoch 10:
+
+2026-10-21 19:44:51.301: 		0.0562      	0.1833      	0.1545      
+START agg_shallow gpu=0 ep=60 --agg_weights=shallow 2026年 10月 21日 星期三 19:44:52 CST
+END   agg_shallow rc=0 2026年 10月 21日 星期三 20:48:07 CST
+--- agg_shallow best ---
+2026-10-21 20:48:06.955: best_result@epoch 60:
+
+2026-10-21 20:48:06.955: 		0.0564      	0.1831      	0.1549      
+START swa30 gpu=0 ep=60 --swa_start=30 2026年 10月 21日 星期三 20:48:07 CST
+END   swa30 rc=0 2026年 10月 21日 星期三 21:51:11 CST
+--- swa30 best ---
+2026-10-21 21:51:10.904: best_result@epoch 48:
+
+2026-10-21 21:51:10.904: 		0.0582      	0.1881      	0.1599      
+START margin01 gpu=0 ep=60 --bpr_margin=0.1 2026年 10月 21日 星期三 21:51:11 CST
+END   margin01 rc=0 2026年 10月 21日 星期三 22:54:17 CST
+--- margin01 best ---
+2026-10-21 22:54:16.614: best_result@epoch 60:
+
+2026-10-21 22:54:16.614: 		0.0580      	0.1877      	0.1598      
+START dropedge09 gpu=0 ep=60 --dropedge_keep=0.9 2026年 10月 21日 星期三 22:54:17 CST

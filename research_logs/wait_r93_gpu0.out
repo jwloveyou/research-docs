@@ -1,1 +1,4 @@
 BEGIN 2026年 10月 21日 星期三 02:39:53 CST [wait_r93_gpu0] waiting for R91_USER_SEM_ALLDONE + GPU0 idle (<1000MiB x2)
+R91_USER_SEM_ALLDONE detected 2026年 10月 21日 星期三 15:29:54 CST
+GPU0 idle (11MiB -> 11MiB) 2026年 10月 21日 星期三 15:31:54 CST
+launching run_r93_lost_candidates.sh 2026年 10月 21日 星期三 15:31:54 CST
