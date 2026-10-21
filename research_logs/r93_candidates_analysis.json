@@ -50,10 +50,16 @@
   },
   "dropedge09": {
     "cn": "dropedge_keep=0.9（主分支边丢弃）",
-    "status": "MISSING"
+    "status": "DONE",
+    "epoch": 39,
+    "recall": 0.1879,
+    "ndcg": 0.1591
   },
   "init2": {
     "cn": "init_scale=2.0（嵌入初始化缩放）",
-    "status": "MISSING"
+    "status": "DONE",
+    "epoch": 58,
+    "recall": 0.1875,
+    "ndcg": 0.1593
   }
 }
