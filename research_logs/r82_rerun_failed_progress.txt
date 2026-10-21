@@ -1,2 +1,44 @@
 BEGIN 2026年 10月 21日 星期三 01:34:37 CST gpu=0
 START yelp2018_simgcl gpu=0 ep=50 2026年 10月 21日 星期三 01:34:37 CST
+END   yelp2018_simgcl rc=0 2026年 10月 21日 星期三 02:04:32 CST
+--- yelp2018_simgcl best ---
+2026-10-21 02:04:31.884: best_result@epoch 14:
+
+2026-10-21 02:04:31.885: 		0.0304      	0.0676      	0.0556      
+START amazon-book_simgcl gpu=0 ep=30 2026年 10月 21日 星期三 02:04:32 CST
+END   amazon-book_simgcl rc=0 2026年 10月 21日 星期三 03:25:54 CST
+--- amazon-book_simgcl best ---
+2026-10-21 03:25:53.904: best_result@epoch 20:
+
+2026-10-21 03:25:53.904: 		0.0189      	0.0462      	0.0358      
+START gowalla_xsimgcl gpu=0 ep=150 2026年 10月 21日 星期三 03:25:54 CST
+END   gowalla_xsimgcl rc=0 2026年 10月 21日 星期三 04:19:13 CST
+--- gowalla_xsimgcl best ---
+2026-10-21 04:19:12.910: best_result@epoch 23:
+
+2026-10-21 04:19:12.910: 		0.0539      	0.1751      	0.1475      
+START yelp2018_xsimgcl gpu=0 ep=50 2026年 10月 21日 星期三 04:19:13 CST
+END   yelp2018_xsimgcl rc=0 2026年 10月 21日 星期三 04:48:54 CST
+--- yelp2018_xsimgcl best ---
+2026-10-21 04:48:53.878: best_result@epoch 14:
+
+2026-10-21 04:48:53.878: 		0.0295      	0.0655      	0.0538      
+START amazon-book_xsimgcl gpu=0 ep=30 2026年 10月 21日 星期三 04:48:54 CST
+END   amazon-book_xsimgcl rc=0 2026年 10月 21日 星期三 06:06:42 CST
+--- amazon-book_xsimgcl best ---
+2026-10-21 06:06:41.120: best_result@epoch 19:
+
+2026-10-21 06:06:41.120: 		0.0185      	0.0450      	0.0352      
+START amazon-book_emb512_s44 gpu=0 ep=15 2026年 10月 21日 星期三 06:06:42 CST
+END   amazon-book_emb512_s44 rc=0 2026年 10月 21日 星期三 09:23:24 CST
+--- amazon-book_emb512_s44 best ---
+2026-10-21 09:23:23.412: best_result@epoch 13:
+
+2026-10-21 09:23:23.412: 		0.0230      	0.0589      	0.0454      
+START amazon-book_lightgcn gpu=0 ep=100 2026年 10月 21日 星期三 09:23:24 CST
+END   amazon-book_lightgcn rc=0 2026年 10月 21日 星期三 13:45:42 CST
+--- amazon-book_lightgcn best ---
+2026-10-21 13:45:41.835: best_result@epoch 99:
+
+2026-10-21 13:45:41.835: 		0.0149      	0.0354      	0.0275      
+R82_RERUN_ALLDONE 2026年 10月 21日 星期三 13:45:42 CST
