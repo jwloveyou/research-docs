@@ -1,0 +1,33 @@
+{
+  "generated": "2026-10-21T23:13:13.279059",
+  "n_done": 0,
+  "n_total": 9,
+  "results": {
+    "gowalla_hccf": null,
+    "gowalla_dccf": null,
+    "gowalla_adagcl": null,
+    "yelp2018_hccf": null,
+    "yelp2018_dccf": null,
+    "yelp2018_adagcl": null,
+    "amazon-book_hccf": null,
+    "amazon-book_dccf": null,
+    "amazon-book_adagcl": null
+  },
+  "fusion_embed512_seed42": {
+    "gowalla": {
+      "r": 0.1894,
+      "n": 0.1596,
+      "ep": 29
+    },
+    "yelp2018": {
+      "r": 0.0716,
+      "n": 0.0587,
+      "ep": 4
+    },
+    "amazon-book": {
+      "r": 0.0589,
+      "n": 0.0455,
+      "ep": 15
+    }
+  }
+}

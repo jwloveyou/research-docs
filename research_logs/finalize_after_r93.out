@@ -1,1 +1,43 @@
 BEGIN 2026年 10月 21日 星期三 23:08:37 CST [finalize_after_r93] waiting for R93_LOST_CANDIDATES_ALLDONE
+R93 ALLDONE detected 2026年 10月 22日 星期四 01:33:37 CST
+==============================================================================
+R93 丢失候选决定性复跑（gowalla embed256+win30 seed42 60ep）
+==============================================================================
+tag           状态      epoch  R@20      NDCG@20   ΔR@20      判定
+ctrl          DONE    60     0.1878    0.1597    --         控制组
+tailboost05   DONE    60     0.1878    0.1597    +0.0000    tailboost γ=-0.5（LAGCL tail 增强） 
+lr_cos100     DONE    60     0.1885    0.1604    +0.0007    LR cosine 退火 win100 f0.1 
+wd4           DONE    10     0.1833    0.1545    -0.0045    weight_decay=1e-4（Adam 解耦） 
+agg_shallow   DONE    60     0.1831    0.1549    -0.0047    层聚合 shallow（浅层偏向） 
+swa30         DONE    48     0.1881    0.1599    +0.0003    SWA swa_start=30（权重平均） 
+margin01      DONE    60     0.1877    0.1598    -0.0001    bpr_margin=0.1 
+dropedge09    DONE    39     0.1879    0.1591    +0.0001    dropedge_keep=0.9（主分支边丢弃） 
+init2         DONE    58     0.1875    0.1593    -0.0003    init_scale=2.0（嵌入初始化缩放） 
+
+[r93] JSON -> /home/Yehaikun/SGL-Torch/research_logs/r93_candidates_analysis.json
+
+[r93] 结论（§4 回填段）：
+  R33 深度噪声已收值判中性；R31b tail-boost / R37 LR / R38 reg+wd / R39 层聚合 / R40 SWA / R41 margin / R49 DropEdge / R60 init_scale 已于 R93 在 masmath 单卡 60ep 决定性复跑（gowalla embed256+win30 seed42，同机 ctrl=0.1878/0.1597@ep60）：tailboost γ=-0.5（LAGCL tail 增强）：R@20 0.1878（+0.00%，NDCG +0.0000，落噪声带）；LR cosine 退火 win100 f0.1：R@20 0.1885（+0.37%，NDCG +0.0007，落噪声带）；weight_decay=1e-4（Adam 解耦）：R@20 0.1833（-2.40%，NDCG -0.0052，落噪声带）；层聚合 shallow（浅层偏向）：R@20 0.1831（-2.50%，NDCG -0.0048，落噪声带）；SWA swa_start=30（权重平均）：R@20 0.1881（+0.16%，NDCG +0.0002，落噪声带）；bpr_margin=0.1：R@20 0.1877（-0.05%，NDCG +0.0001，落噪声带）；dropedge_keep=0.9（主分支边丢弃）：R@20 0.1879（+0.05%，NDCG -0.0006，落噪声带）；init_scale=2.0（嵌入初始化缩放）：R@20 0.1875（-0.16%，NDCG -0.0004，落噪声带）——全部 < ctrl+0.001 阈值（gowalla seed 噪声 ±0.0008），核心三集维持「3 通用组件」定稿，代码与脚本保留
+[r93][dry-run] 将替换 §4 负结果清单的 8 候选段
+  OLD: R33 深度噪声已收值判中性；R31b tail-boost / R37 LR / R38 reg+wd / R39 层 ...
+  NEW: R33 深度噪声已收值判中性；R31b tail-boost / R37 LR / R38 reg+wd / R39 层聚合 / R40 SWA / R41 margin / R49 DropEdge / R60 init_scale 已于 ...
+==============================================================================
+R93 丢失候选决定性复跑（gowalla embed256+win30 seed42 60ep）
+==============================================================================
+tag           状态      epoch  R@20      NDCG@20   ΔR@20      判定
+ctrl          DONE    60     0.1878    0.1597    --         控制组
+tailboost05   DONE    60     0.1878    0.1597    +0.0000    tailboost γ=-0.5（LAGCL tail 增强） 
+lr_cos100     DONE    60     0.1885    0.1604    +0.0007    LR cosine 退火 win100 f0.1 
+wd4           DONE    10     0.1833    0.1545    -0.0045    weight_decay=1e-4（Adam 解耦） 
+agg_shallow   DONE    60     0.1831    0.1549    -0.0047    层聚合 shallow（浅层偏向） 
+swa30         DONE    48     0.1881    0.1599    +0.0003    SWA swa_start=30（权重平均） 
+margin01      DONE    60     0.1877    0.1598    -0.0001    bpr_margin=0.1 
+dropedge09    DONE    39     0.1879    0.1591    +0.0001    dropedge_keep=0.9（主分支边丢弃） 
+init2         DONE    58     0.1875    0.1593    -0.0003    init_scale=2.0（嵌入初始化缩放） 
+
+[r93] JSON -> /home/Yehaikun/SGL-Torch/research_logs/r93_candidates_analysis.json
+
+[r93] 结论（§4 回填段）：
+  R33 深度噪声已收值判中性；R31b tail-boost / R37 LR / R38 reg+wd / R39 层聚合 / R40 SWA / R41 margin / R49 DropEdge / R60 init_scale 已于 R93 在 masmath 单卡 60ep 决定性复跑（gowalla embed256+win30 seed42，同机 ctrl=0.1878/0.1597@ep60）：tailboost γ=-0.5（LAGCL tail 增强）：R@20 0.1878（+0.00%，NDCG +0.0000，落噪声带）；LR cosine 退火 win100 f0.1：R@20 0.1885（+0.37%，NDCG +0.0007，落噪声带）；weight_decay=1e-4（Adam 解耦）：R@20 0.1833（-2.40%，NDCG -0.0052，落噪声带）；层聚合 shallow（浅层偏向）：R@20 0.1831（-2.50%，NDCG -0.0048，落噪声带）；SWA swa_start=30（权重平均）：R@20 0.1881（+0.16%，NDCG +0.0002，落噪声带）；bpr_margin=0.1：R@20 0.1877（-0.05%，NDCG +0.0001，落噪声带）；dropedge_keep=0.9（主分支边丢弃）：R@20 0.1879（+0.05%，NDCG -0.0006，落噪声带）；init_scale=2.0（嵌入初始化缩放）：R@20 0.1875（-0.16%，NDCG -0.0004，落噪声带）——全部 < ctrl+0.001 阈值（gowalla seed 噪声 ±0.0008），核心三集维持「3 通用组件」定稿，代码与脚本保留
+[r93] 已回填 §4（备份 研究总报告.md.bak_20261022_013338）
+FINALIZE_AFTER_R93_ALLDONE 2026年 10月 22日 星期四 01:33:38 CST
