@@ -122,7 +122,15 @@ def main():
     c3 = new_txt.count(old_conc)
     new_txt = new_txt.replace(old_conc, new_conc)
 
-    print(f"[finalize_amazon_s44] patched rows: R@20={c1}, NDCG={c2}, conclusion={c3}")
+    # ③ 诚实注 bullet（§2.4 末尾）2-seed → 3-seed（幂等；R96 补：finalize_amazon_s44 此前漏改）
+    old_note = ("组件③ 256→512 的 amazon 行当前为 **2-seed**（s44 因 10-20 磁盘配额失败、"
+                "R82 链尾重跑中），s44 收齐后自动升级 n=3（`collect_final_results.py` 已接 r81/r82 日志）。")
+    new_note = ("组件③ 256→512 的 amazon 行已升级为 **3-seed**（s44=0.0589/0.0454@ep13，"
+                "R82 链已收；R@20 Δ+0.0037 p=0.0002、NDCG Δ+0.0027 p=0.0010，均零交叉）。")
+    c4 = new_txt.count(old_note)
+    new_txt = new_txt.replace(old_note, new_note)
+
+    print(f"[finalize_amazon_s44] patched rows: R@20={c1}, NDCG={c2}, conclusion={c3}, note={c4}")
 
     if c1 != 1 or c2 != 1:
         print("[finalize_amazon_s44] WARN: unexpected row match count (may already be patched or format changed).")
