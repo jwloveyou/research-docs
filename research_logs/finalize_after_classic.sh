@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# =============================================================================
+# R102 · finalize_after_classic.sh —— 经典 baseline（LightGCL/NGCF/UltraGCN/DGCF/
+#        NCL/DirectAU/RecDCL）官方超参 masmath 复跑（R102）ALLDONE 后自动定稿 §2.3
+#        （补上 task#10「经典模型大量复现」的最后一张表）。
+# =============================================================================
+# 只做三件事（守诚实铁律、零造假、零碰 GPU）：
+#   1) 轮询 r102_classic_baselines_progress.txt 直到 `CLASSIC_BASELINES_ALLDONE`
+#   2) 运行 util/collect_classic_results.py —— 从 r102_*.log 逐项提取 21 个 run 的
+#      best R@20/NDCG@20，回填 研究总报告.md §2.3（写盘前自动备份、幂等可重跑）
+#   3) git 提交 SGL-Torch 的脚本/日志（研究总报告.md 在 ~/research-work，非 git 仓）
+#
+# 只占用 CPU、绝不碰 GPU。与 wait_classic_masmath.sh（GPU 训练链）零抢卡。
+# 用法：nohup bash research_logs/finalize_after_classic.sh > research_logs/finalize_after_classic.out 2>&1 &
+# =============================================================================
+set -u
+PY=/home/Yehaikun/miniconda3/envs/sgl/bin/python
+SGL=~/SGL-Torch
+PROG="$SGL/research_logs/r102_classic_baselines_progress.txt"
+MARK="CLASSIC_BASELINES_ALLDONE"
+
+cd "$SGL" || exit 1
+echo "BEGIN $(date) [finalize_after_classic] waiting for $MARK"
+
+while ! grep -q "$MARK" "$PROG" 2>/dev/null; do
+  sleep 300
+done
+echo "CLASSIC ALLDONE detected $(date)"
+
+# 先 dry-run 确认，再正式回填（幂等）
+"$PY" util/collect_classic_results.py --dry-run
+"$PY" util/collect_classic_results.py || { echo "collect_classic_results FAILED"; exit 2; }
+
+# git 提交（SGL-Torch 代码仓；报告目录非 git 仓，仅写盘）
+git add util/collect_classic_results.py research_logs/finalize_after_classic.sh \
+        research_logs/run_classic_baselines_masmath.sh research_logs/wait_classic_masmath.sh \
+        research_logs/classic_results.json \
+        research_logs/r102_*.log research_logs/r102_classic_baselines_progress.txt 2>/dev/null
+git commit -q -m "R102 收尾：经典 baseline（LightGCL/NGCF/UltraGCN/DGCF/NCL/DirectAU/RecDCL）官方超参 masmath 复跑定稿，§2.3 自动回填" \
+  || echo "SGL commit skipped (nothing new)"
+
+echo "FINALIZE_AFTER_CLASSIC_ALLDONE $(date)"
