@@ -1,17 +1,62 @@
 {
-  "generated": "2026-10-21T23:13:13.279059",
-  "n_done": 0,
+  "generated": "2026-10-23T21:38:49.548533",
+  "n_done": 9,
   "n_total": 9,
   "results": {
-    "gowalla_hccf": null,
-    "gowalla_dccf": null,
-    "gowalla_adagcl": null,
-    "yelp2018_hccf": null,
-    "yelp2018_dccf": null,
-    "yelp2018_adagcl": null,
-    "amazon-book_hccf": null,
-    "amazon-book_dccf": null,
-    "amazon-book_adagcl": null
+    "gowalla_hccf": {
+      "epoch": 34,
+      "precision": 0.0337,
+      "recall": 0.1061,
+      "ndcg": 0.0923
+    },
+    "gowalla_dccf": {
+      "epoch": 9,
+      "precision": 0.0432,
+      "recall": 0.1403,
+      "ndcg": 0.1173
+    },
+    "gowalla_adagcl": {
+      "epoch": 3,
+      "precision": 0.0396,
+      "recall": 0.1271,
+      "ndcg": 0.1124
+    },
+    "yelp2018_hccf": {
+      "epoch": 68,
+      "precision": 0.0176,
+      "recall": 0.0379,
+      "ndcg": 0.0314
+    },
+    "yelp2018_dccf": {
+      "epoch": 5,
+      "precision": 0.0243,
+      "recall": 0.0537,
+      "ndcg": 0.0441
+    },
+    "yelp2018_adagcl": {
+      "epoch": 3,
+      "precision": 0.0215,
+      "recall": 0.0466,
+      "ndcg": 0.0383
+    },
+    "amazon-book_hccf": {
+      "epoch": 80,
+      "precision": 0.005,
+      "recall": 0.0107,
+      "ndcg": 0.0084
+    },
+    "amazon-book_dccf": {
+      "epoch": 6,
+      "precision": 0.015,
+      "recall": 0.0364,
+      "ndcg": 0.0287
+    },
+    "amazon-book_adagcl": {
+      "epoch": 5,
+      "precision": 0.012,
+      "recall": 0.0265,
+      "ndcg": 0.0218
+    }
   },
   "fusion_embed512_seed42": {
     "gowalla": {
