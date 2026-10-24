@@ -1565,6 +1565,19 @@ class NoiseSGL(AbstractRecommender):
         # wins' law); orthogonal to noise (R1) / SSL anneal (R15) / capacity (R18) /
         # semantic (R47) and to the UNIFORM init_scale (R60, scales all rows equally).
         self.init_pop_gamma = float(config["init_pop_gamma"]) if "init_pop_gamma" in config else 0.0
+        # Round-115: FAITHFUL PRISM initialization (KDD'25 arXiv:2505.11318, Eq. 4).
+        # init_prism_alpha = -1.0 keeps the standard initializer output (backward
+        # compatible). alpha in [0, inf) unit-normalizes each embedding row and then
+        # scales it by  alpha*log(deg_r + 2) + (1 - alpha)  -- the EXACT PRISM
+        # magnitude initialization (alpha=0 => plain unit vectors, alpha=1 => pure
+        # popularity log-magnitude, log(d+2) so cold-start nodes are not zeroed).
+        # This is distinct from init_pop_gamma (R113): that one is a *linear centering*
+        # of deg/max(deg) on top of the xavier_uniform magnitudes (a "PRISM-style"
+        # adaptation, NOT the paper's Eq. 4, whose log(d+2) form is naturally bounded
+        # so the R28 degree-power-law blow-up concern does not apply). Static, zero
+        # learnable parameters (R1/R15/R18 'static wins' law); orthogonal to noise /
+        # SSL anneal / capacity / semantic / init_scale / init_pop_gamma.
+        self.init_prism_alpha = float(config["init_prism_alpha"]) if "init_prism_alpha" in config else -1.0
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
         # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
@@ -2408,6 +2421,30 @@ class NoiseSGL(AbstractRecommender):
                 "[init-pop] gamma=%.3f user_scale[min/mean/max]=%.4f/%.4f/%.4f "
                 "item_scale[min/mean/max]=%.4f/%.4f/%.4f" % (
                     self.init_pop_gamma, su.min(), su.mean(), su.max(),
+                    si.min(), si.mean(), si.max()))
+        if self.init_prism_alpha >= 0.0:
+            # Round-115: faithful PRISM Eq. 4 (KDD'25 arXiv:2505.11318). Unit-normalize
+            # each row first (paper: i_init / ||i_init||), then scale by the popularity
+            # log-magnitude  alpha*log(deg_r+2) + (1-alpha). Training-interaction degrees
+            # only (no test leakage).
+            ui_pairs = self.dataset.train_data.to_user_item_pairs()
+            deg_u = np.bincount(ui_pairs[:, 0], minlength=self.num_users).astype(np.float64)
+            deg_i = np.bincount(ui_pairs[:, 1], minlength=self.num_items).astype(np.float64)
+            su = self.init_prism_alpha * np.log(deg_u + 2.0) + (1.0 - self.init_prism_alpha)
+            si = self.init_prism_alpha * np.log(deg_i + 2.0) + (1.0 - self.init_prism_alpha)
+            with torch.no_grad():
+                self.lightgcn.user_embeddings.weight.data.copy_(
+                    F.normalize(self.lightgcn.user_embeddings.weight.data, dim=1))
+                self.lightgcn.item_embeddings.weight.data.copy_(
+                    F.normalize(self.lightgcn.item_embeddings.weight.data, dim=1))
+                self.lightgcn.user_embeddings.weight.mul_(
+                    torch.from_numpy(su).float().to(self.device).view(-1, 1))
+                self.lightgcn.item_embeddings.weight.mul_(
+                    torch.from_numpy(si).float().to(self.device).view(-1, 1))
+            self.logger.info(
+                "[init-prism] alpha=%.3f user_scale[min/mean/max]=%.4f/%.4f/%.4f "
+                "item_scale[min/mean/max]=%.4f/%.4f/%.4f" % (
+                    self.init_prism_alpha, su.min(), su.mean(), su.max(),
                     si.min(), si.mean(), si.max()))
         if self.adagcl:
             # AdaGCL uses THREE optimisers (official Main.py): opt (main embeddings),
