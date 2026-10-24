@@ -1,0 +1,2 @@
+gowalla_dgcf|scnumath:4
+yelp2018_dgcf|local:0

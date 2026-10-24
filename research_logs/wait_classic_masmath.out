@@ -1,1 +1,6 @@
 BEGIN 2026年 10月 22日 星期四 13:42:37 CST [wait_classic_masmath] waiting for NO1_BASELINES_ALLDONE + GPU0 idle (<1000MiB x2)
+NO1_BASELINES_ALLDONE detected 2026年 10月 23日 星期五 21:42:39 CST
+GPU0 idle (11MiB -> 11MiB) 2026年 10月 23日 星期五 21:44:39 CST
+launching run_classic_baselines_masmath.sh 2026年 10月 23日 星期五 21:44:39 CST
+research_logs/wait_classic_masmath.sh: line 44: 84725 Terminated              bash research_logs/run_classic_baselines_masmath.sh > research_logs/r102_classic_launcher.out 2>&1
+WAIT_CLASSIC_MASMATH_DONE 2026年 10月 25日 星期日 02:19:09 CST

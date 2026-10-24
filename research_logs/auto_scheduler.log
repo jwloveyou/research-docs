@@ -1,0 +1,37 @@
+===== auto_scheduler BEGIN 2026年 10月 25日 星期日 02:20:34 CST =====
+[2026-10-25 02:20:34] rsync code -> scnumath (exclude dataset/research_logs/.git)
+sending incremental file list
+
+sent 7,275 bytes  received 56 bytes  4,887.33 bytes/sec
+total size is 5,906,250  speedup is 805.65
+[2026-10-25 02:20:35] queue head: #/剩余
+[2026-10-25 02:20:36] WARN dispatch scnumath 剩余_# failed
+[2026-10-25 02:20:36] dispatch fail, retry later: #/剩余
+[2026-10-25 02:20:43] WARN dispatch local 剩余_# failed (pid=24358 已退出)
+[2026-10-25 02:20:43] dispatch fail, retry later: #/剩余
+===== auto_scheduler BEGIN 2026年 10月 25日 星期日 02:21:45 CST =====
+[2026-10-25 02:21:45] rsync code -> scnumath (exclude dataset/research_logs/.git)
+sending incremental file list
+
+sent 7,275 bytes  received 56 bytes  14,662.00 bytes/sec
+total size is 5,906,250  speedup is 805.65
+[2026-10-25 02:21:46] queue head: dgcf/gowalla
+[2026-10-25 02:21:47] dispatch gowalla_dgcf -> scnumath:4 (scnumath)
+[2026-10-25 02:21:54] dispatch yelp2018_dgcf -> local:0 (pid=24594)
+===== auto_scheduler BEGIN 2026年 10月 25日 星期日 02:23:33 CST =====
+[2026-10-25 02:23:33] rsync code -> scnumath (exclude dataset/research_logs/.git)
+sending incremental file list
+
+sent 7,275 bytes  received 56 bytes  4,887.33 bytes/sec
+total size is 5,906,250  speedup is 805.65
+[2026-10-25 02:23:34] queue head: dgcf/gowalla
+===== auto_scheduler BEGIN 2026年 10月 25日 星期日 02:25:46 CST =====
+[2026-10-25 02:25:46] rsync code -> scnumath (exclude dataset/research_logs/.git)
+sending incremental file list
+data/__pycache__/
+model/general_recommender/__pycache__/
+reckit/__pycache__/
+
+sent 7,284 bytes  received 65 bytes  14,698.00 bytes/sec
+total size is 5,906,250  speedup is 803.68
+[2026-10-25 02:25:47] queue head: dgcf/amazon-book

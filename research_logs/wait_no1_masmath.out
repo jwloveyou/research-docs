@@ -1,2 +1,5 @@
 BEGIN 2026年 10月 21日 星期三 11:21:14 CST [wait_no1_masmath] waiting for R93_LOST_CANDIDATES_ALLDONE + GPU0 idle (<1000MiB x2)
 R93_LOST_CANDIDATES_ALLDONE detected 2026年 10月 22日 星期四 01:36:15 CST
+GPU0 idle (499MiB -> 499MiB) 2026年 10月 22日 星期四 17:13:32 CST
+launching run_no1_baselines_masmath.sh 2026年 10月 22日 星期四 17:13:32 CST
+WAIT_NO1_MASMATH_DONE 2026年 10月 23日 星期五 21:38:09 CST

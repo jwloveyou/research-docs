@@ -1,25 +1,70 @@
 {
-  "generated": "2026-10-22T13:42:24.226620",
-  "n_done": 0,
+  "generated": "2026-10-25T02:12:54.473664",
+  "n_done": 9,
   "n_total": 21,
   "results": {
-    "gowalla_lightgcl": null,
-    "gowalla_ngcf": null,
-    "gowalla_ultragcn": null,
+    "gowalla_lightgcl": {
+      "epoch": 138,
+      "precision": 0.013,
+      "recall": 0.0423,
+      "ndcg": 0.0351
+    },
+    "gowalla_ngcf": {
+      "epoch": 338,
+      "precision": 0.0442,
+      "recall": 0.1406,
+      "ndcg": 0.121
+    },
+    "gowalla_ultragcn": {
+      "epoch": 6,
+      "precision": 0.0019,
+      "recall": 0.0064,
+      "ndcg": 0.0037
+    },
     "gowalla_dgcf": null,
     "gowalla_ncl": null,
     "gowalla_directau": null,
     "gowalla_recdcl": null,
-    "yelp2018_lightgcl": null,
-    "yelp2018_ngcf": null,
-    "yelp2018_ultragcn": null,
+    "yelp2018_lightgcl": {
+      "epoch": 2,
+      "precision": 0.0063,
+      "recall": 0.0126,
+      "ndcg": 0.0111
+    },
+    "yelp2018_ngcf": {
+      "epoch": 354,
+      "precision": 0.0234,
+      "recall": 0.051,
+      "ndcg": 0.0415
+    },
+    "yelp2018_ultragcn": {
+      "epoch": 7,
+      "precision": 0.001,
+      "recall": 0.0023,
+      "ndcg": 0.0016
+    },
     "yelp2018_dgcf": null,
     "yelp2018_ncl": null,
     "yelp2018_directau": null,
     "yelp2018_recdcl": null,
-    "amazon-book_lightgcl": null,
-    "amazon-book_ngcf": null,
-    "amazon-book_ultragcn": null,
+    "amazon-book_lightgcl": {
+      "epoch": 1,
+      "precision": 0.0004,
+      "recall": 0.0009,
+      "ndcg": 0.0007
+    },
+    "amazon-book_ngcf": {
+      "epoch": 198,
+      "precision": 0.013,
+      "recall": 0.0303,
+      "ndcg": 0.024
+    },
+    "amazon-book_ultragcn": {
+      "epoch": 4,
+      "precision": 0.0005,
+      "recall": 0.001,
+      "ndcg": 0.0008
+    },
     "amazon-book_dgcf": null,
     "amazon-book_ncl": null,
     "amazon-book_directau": null,

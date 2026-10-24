@@ -1,1 +1,89 @@
 BEGIN 2026年 10月 21日 星期三 23:13:51 CST [finalize_after_no1] waiting for NO1_BASELINES_ALLDONE
+NO1 ALLDONE detected 2026年 10月 23日 星期五 21:38:49 CST
+**No.1 baseline 官方超参终值（masmath，R95；R@20/NDCG@20）**
+
+| 数据集 | HCCF（embed32） | DCCF（embed32） | AdaGCL（embed32） | **融合 embed512** |
+|---|---|---|---|---|
+| gowalla | 0.1061/0.0923@ep34 | 0.1403/0.1173@ep9 | 0.1271/0.1124@ep3 | **0.1894/0.1596**@ep29 |
+| yelp2018 | 0.0379/0.0314@ep68 | 0.0537/0.0441@ep5 | 0.0466/0.0383@ep3 | **0.0716/0.0587**@ep4 |
+| amazon-book | 0.0107/0.0084@ep80 | 0.0364/0.0287@ep6 | 0.0265/0.0218@ep5 | **0.0589/0.0455**@ep15 |
+
+
+=== status ===
+  gowalla_hccf             DONE 0.1061/0.0923@ep34
+  gowalla_dccf             DONE 0.1403/0.1173@ep9
+  gowalla_adagcl           DONE 0.1271/0.1124@ep3
+  yelp2018_hccf            DONE 0.0379/0.0314@ep68
+  yelp2018_dccf            DONE 0.0537/0.0441@ep5
+  yelp2018_adagcl          DONE 0.0466/0.0383@ep3
+  amazon-book_hccf         DONE 0.0107/0.0084@ep80
+  amazon-book_dccf         DONE 0.0364/0.0287@ep6
+  amazon-book_adagcl       DONE 0.0265/0.0218@ep5
+done=9/9
+[collect_no1_results] --dry-run：回填内容如下（不写盘）
+-----------
+# 研究总报告：NoiseSGL 融合模型（三数据集超 LightGCN 基线）
+
+> 死线：2026-10-22 ｜ 状态：**已达成验收标准**（三数据集全部超过 LightGCN 基线，R82 融合维度升级至 512 后超幅 +10.3%/+43.3%/+3.5%）；泛化验证扩展到 **13 个公共数据集**（§2.2：7 明确胜 + 1 早胜（tmall）+ 1 稠密负（ml-1m）+ 1 极稠密中性（jester）+ 3 早期值已收但后续训练随 scnumath 被封丢失（ml-10m/ifashion/yelp_full））；效率对比见 §8（零参数、~16× 墙钟加速，R36）。
+> 本文为最终交付文档：融合架构 + 多数据集指标 + 完整消融表 + 方法溯源 + 有效性论证 + 结论 + 代码位置。
+
+---
+
+## 0. 一句话结论
+
+在 **LightGCN 骨干**上叠加 **3 个静态、无学习参数的通用组件**——①**嵌入空间噪声增广**（SimGCL 式）、②**固定窗口 SSL 权重退火**、③**嵌入容量缩放（64→512 维）**——使三个数据集（yelp2018 / amazon-book / gowalla）的 **Recall@20 全部超过 LightGCN 基线**，超幅分别为 **+10.3% / +43.3% / +3.5%**；并通过底层实验（过平滑度量、嵌入有效秩、层间余弦）证明了「噪声增广 × 容量缩放」的协同机制，满足「可写论文」所需的架构、消融、多集指标与有效性论证。
+
+此外，叠加 **第 4 个条件组件（仅文本富集数据集生效）：冻结 LLM 语义注入**（LLMRec 式冻结特征 + 冻结投影，零训练参数，最优注入强度 sem_lam=2.0）——在 lastfm-2k 上 3-seed 一致带来 **+1.43% R@20 / +1.50% NDCG**（R76b，零交叉），是「信息注入」轴（R10 判定为唯一未系统尝试的轴）的首个干净正增益，论文中定位为 LLM 语义增强的加分组件与未来方向。
+
+---
+
+## 1. 融合架构（最终模型）
+
+统一配置（三个数据集同构）：
+
+| 配置项 | 取值 | 含义 |
+|---|---|---|
+| `view_mix` | `nn` | 两个**嵌入空间噪声视图**（SimGCL 式逐层扰动），共享 LightGCN 传播算子 |
+| `noise_eps` | `0.2` | 逐层噪声幅度（单位球均匀噪声 × sign(嵌入) × ε） |
+| `ssl_anneal` | `2` | SSL 权重 **cosine 退火** |
+| `ssl_anneal_epochs` | `30` | 退火在**固定 30 轮窗口**内完成，之后 λ=0（纯 BPR 精调） |
+| `ssl_anneal_floor` | `0.0` | 退火下界（到 0） |
+| `ssl_reg` | `0.1` | InfoNCE 损失权重 |
+| `embed_size` | `512` | 嵌入维度（64→128→256→512 容量缩放，R82 定案） |
+| `n_layers` | `3` | LightGCN 传播层数 |
+| `sem_emb` / `sem_lam` | `0`（核心三集）/ `1` / `2.0`（文本富集集） | **第 4 组件（条件）**：冻结 LLM 语义注入（layer-0 物品嵌入 += sem_lam·item_sem，非 Parameter、零梯度；最优强度 sem_lam=2.0，R76b 3-seed 定稿） |
+| 其余 | 默认 | `reg=1e-4`、`lr=1e-3`、`batch=1024`、`ssl_temp=0.2`、`num_negatives=1`、`use_mlc=0`、`ssl_warmup_epochs=0` |
+
+损失：
+```
+L = L_BPR(clean 主分支) + λ(t)·ssl_reg·L_InfoNCE(两个噪声视图) + reg·||E||²
+λ(t) = 0.5·(1+cos(π·t/W))   for t∈[0,W], W=30；之后 λ=0
+```
+
+关键设计约束（R1–R24 实证得出的「铁律」）：
+- **只做静态改动**（噪声 / 调度 / 维度），**不动传播算子**、**不引入可学习结构参数**（可学习结构改动 R4/R19 一律有害）。
+- **噪声视图必须与主分支共享同一传播算子**（R4/R6/R7：任何「非噪声」视图——边丢弃、SVD 全局、聚类原型——经 InfoNCE 反噬主表征）。
+- **噪声增广 + 容量缩放
+-----------
+**No.1 baseline 官方超参终值（masmath，R95；R@20/NDCG@20）**
+
+| 数据集 | HCCF（embed32） | DCCF（embed32） | AdaGCL（embed32） | **融合 embed512** |
+|---|---|---|---|---|
+| gowalla | 0.1061/0.0923@ep34 | 0.1403/0.1173@ep9 | 0.1271/0.1124@ep3 | **0.1894/0.1596**@ep29 |
+| yelp2018 | 0.0379/0.0314@ep68 | 0.0537/0.0441@ep5 | 0.0466/0.0383@ep3 | **0.0716/0.0587**@ep4 |
+| amazon-book | 0.0107/0.0084@ep80 | 0.0364/0.0287@ep6 | 0.0265/0.0218@ep5 | **0.0589/0.0455**@ep15 |
+
+
+=== status ===
+  gowalla_hccf             DONE 0.1061/0.0923@ep34
+  gowalla_dccf             DONE 0.1403/0.1173@ep9
+  gowalla_adagcl           DONE 0.1271/0.1124@ep3
+  yelp2018_hccf            DONE 0.0379/0.0314@ep68
+  yelp2018_dccf            DONE 0.0537/0.0441@ep5
+  yelp2018_adagcl          DONE 0.0466/0.0383@ep3
+  amazon-book_hccf         DONE 0.0107/0.0084@ep80
+  amazon-book_dccf         DONE 0.0364/0.0287@ep6
+  amazon-book_adagcl       DONE 0.0265/0.0218@ep5
+done=9/9
+[collect_no1_results] 已回填 §2.3（备份 研究总报告.md.bak_no1_20261023_213849）
+FINALIZE_AFTER_NO1_ALLDONE 2026年 10月 23日 星期五 21:38:49 CST

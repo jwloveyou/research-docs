@@ -1,0 +1,58 @@
+BEGIN 2026年 10月 23日 星期五 21:44:39 CST gpu=0
+START gowalla_lightgcl gpu=0 ep=150 2026年 10月 23日 星期五 21:44:39 CST
+END   gowalla_lightgcl rc=0 2026年 10月 24日 星期六 00:51:36 CST
+--- gowalla_lightgcl best ---
+2026-10-24 00:51:35.712: best_result@epoch 138:
+
+2026-10-24 00:51:35.712: 		0.0130      	0.0423      	0.0351      
+START yelp2018_lightgcl gpu=0 ep=50 2026年 10月 24日 星期六 00:51:36 CST
+END   yelp2018_lightgcl rc=0 2026年 10月 24日 星期六 02:35:26 CST
+--- yelp2018_lightgcl best ---
+2026-10-24 02:35:24.776: best_result@epoch 2:
+
+2026-10-24 02:35:24.776: 		0.0063      	0.0126      	0.0111      
+START amazon-book_lightgcl gpu=0 ep=30 2026年 10月 24日 星期六 02:35:26 CST
+END   amazon-book_lightgcl rc=0 2026年 10月 24日 星期六 06:13:04 CST
+--- amazon-book_lightgcl best ---
+2026-10-24 06:13:02.091: best_result@epoch 1:
+
+2026-10-24 06:13:02.091: 		0.0004      	0.0009      	0.0007      
+START gowalla_ngcf gpu=0 ep=400 2026年 10月 24日 星期六 06:13:04 CST
+END   gowalla_ngcf rc=0 2026年 10月 24日 星期六 07:59:52 CST
+--- gowalla_ngcf best ---
+2026-10-24 07:59:51.332: best_result@epoch 338:
+
+2026-10-24 07:59:51.332: 		0.0442      	0.1406      	0.1210      
+START yelp2018_ngcf gpu=0 ep=400 2026年 10月 24日 星期六 07:59:52 CST
+END   yelp2018_ngcf rc=0 2026年 10月 24日 星期六 10:51:25 CST
+--- yelp2018_ngcf best ---
+2026-10-24 10:51:24.632: best_result@epoch 354:
+
+2026-10-24 10:51:24.632: 		0.0234      	0.0510      	0.0415      
+START amazon-book_ngcf gpu=0 ep=200 2026年 10月 24日 星期六 10:51:25 CST
+END   amazon-book_ngcf rc=0 2026年 10月 24日 星期六 17:08:00 CST
+--- amazon-book_ngcf best ---
+2026-10-24 17:07:59.449: best_result@epoch 198:
+
+2026-10-24 17:07:59.450: 		0.0130      	0.0303      	0.0240      
+START gowalla_ultragcn gpu=0 ep=150 2026年 10月 24日 星期六 17:08:00 CST
+END   gowalla_ultragcn rc=0 2026年 10月 24日 星期六 18:48:40 CST
+--- gowalla_ultragcn best ---
+2026-10-24 18:48:39.865: best_result@epoch 6:
+
+2026-10-24 18:48:39.865: 		0.0019      	0.0064      	0.0037      
+START yelp2018_ultragcn gpu=0 ep=100 2026年 10月 24日 星期六 18:48:40 CST
+END   yelp2018_ultragcn rc=0 2026年 10月 24日 星期六 20:28:22 CST
+--- yelp2018_ultragcn best ---
+2026-10-24 20:28:21.948: best_result@epoch 7:
+
+2026-10-24 20:28:21.948: 		0.0010      	0.0023      	0.0016      
+START amazon-book_ultragcn gpu=0 ep=100 2026年 10月 24日 星期六 20:28:22 CST
+END   amazon-book_ultragcn rc=0 2026年 10月 25日 星期日 00:16:25 CST
+--- amazon-book_ultragcn best ---
+2026-10-25 00:16:24.732: best_result@epoch 4:
+
+2026-10-25 00:16:24.732: 		0.0005      	0.0010      	0.0008      
+START gowalla_dgcf gpu=0 ep=200 2026年 10月 25日 星期日 00:16:25 CST
+START gowalla_dgcf gpu=4 ep=200 [scheduler:scnumath] 2026年 10月 25日 星期日 02:21:47 CST
+START yelp2018_dgcf gpu=0 ep=100 [scheduler:local] 2026年 10月 25日 星期日 02:21:54 CST

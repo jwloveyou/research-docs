@@ -1,0 +1,247 @@
+/home/Yehaikun/SGL-Torch/data/dataset.py:317: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.valid does not exist.
+  warnings.warn("%s does not exist." % valid_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:331: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.user2id does not exist.
+  warnings.warn("%s does not exist." % user2id_file)
+/home/Yehaikun/SGL-Torch/data/dataset.py:339: UserWarning: /home/Yehaikun/SGL-Torch/dataset/amazon-book/amazon-book.item2id does not exist.
+  warnings.warn("%s does not exist." % item2id_file)
+set pytorch seed
+Item degree grouping...
+User degree grouping...
+Data loading finished
+2026-10-24 02:35:30.031: my pid: 104192
+2026-10-24 02:35:30.032: model: model.general_recommender.NoiseSGL
+2026-10-24 02:35:30.032: Dataset statistics:
+Name: amazon-book
+The number of users: 52643
+The number of items: 91599
+The number of ratings: 2984108
+Average actions of users: 56.69
+Average actions of items: 32.58
+The sparsity of the dataset: 99.938115%
+
+The number of training: 2380730
+The number of validation: 0
+The number of testing: 603378
+2026-10-24 02:35:30.032: NeuRec:[NeuRec]:
+recommender=NoiseSGL
+dataset=amazon-book
+file_column=UI
+sep=','
+gpu_id=0
+metric=["Precision", "Recall", "NDCG"]
+top_k=[20]
+test_thread=8
+test_batch_size=128
+seed=42
+start_testing_epoch=0
+batch_size=256
+
+NoiseSGL:[hyperparameters]:
+aug_type=ED
+reg=1e-7
+embed_size=64
+n_layers=2
+ssl_reg=0.2
+ssl_ratio=0.1
+ssl_temp=0.2
+ssl_temp_anneal=0
+ssl_temp_anneal_epochs=0
+ssl_temp_start=0.2
+ssl_temp_end=0.2
+ssl_mode=both_side
+ssl_warmup_epochs=0
+ssl_anneal=0
+ssl_anneal_floor=0.0
+ssl_anneal_epochs=0
+mlc_start_layer=2
+mlc_layer_weight=linear
+ssl_degree_alpha=0.5
+noise_eps=0.2
+noise_mode=0
+noise_anneal=0
+noise_anneal_epochs=0
+noise_eps_floor=0.0
+noise_deg_gamma=0.0
+noise_layer_gamma=0.0
+noise_item_boost=0.0
+gate_mode=0
+gate_init=2.0
+use_mlc=0
+view_mix=nn
+gl_rank=5
+lightgcl=1
+lightgcl_perlayer=1
+hccf=0
+hccf_hyper_num=128
+hccf_keep_rate=0.5
+hccf_ssl_reg=1e-3
+hccf_temp=1.0
+dccf=0
+dccf_n_intents=128
+dccf_temp=1.0
+dccf_emb_reg=2.5e-5
+dccf_cen_reg=5e-3
+dccf_ssl_reg=1e-1
+adagcl=0
+adagcl_ssl_reg=0.1
+adagcl_ib_reg=0.1
+adagcl_reg=1e-5
+adagcl_temp=0.5
+adagcl_beta=0.1
+adagcl_lambda0=1e-4
+adagcl_gamma=-0.45
+adagcl_zeta=1.05
+adagcl_init_temp=2.0
+adagcl_temp_decay=0.98
+adagcl_eps=1e-3
+ngcf=0
+ngcf_node_dropout=0.1
+ngcf_message_dropout=0.1
+ultragcn=0
+ultragcn_lambda=1.0
+ultragcn_gamma=1.0
+ultragcn_ii_neighbor=10
+dgcf=0
+dgcf_n_factors=4
+dgcf_temp=1.0
+dgcf_ind_reg=0.01
+ncl=0
+ncl_ssl_reg=1e-7
+ncl_proto_reg=8e-8
+ncl_temp=0.1
+ncl_hyper_layers=1
+ncl_alpha=1.0
+ncl_num_clusters=1000
+ncl_m_step=1
+ncl_warm_up=20
+ncl_kmeans_iters=10
+ncl_kmeans_seed=0
+directau=0
+directau_gamma=1.0
+directau_t=2.0
+lr=0.001
+weight_decay=0.0
+lr_anneal=0
+lr_anneal_epochs=0
+lr_floor=0.1
+swa_start=0
+learner=adam
+adj_type=pre
+epochs=30
+batch_size=256
+num_negatives=1
+bpr_margin=0.0
+sem_emb=0
+sem_lam=1.0
+user_sem_emb=0
+user_sem_lam=1.0
+l2_norm=0
+dropout=0
+dropedge_keep=1.0
+res_alpha=0.0
+agg_weights=uniform
+agg_alpha=0.5
+spec_bal=0.0
+spec_bal_center=1
+param_init=xavier_uniform
+init_scale=1.0
+stddev=0.01
+verbose=1
+stop_cnt=1000
+pretrain_flag=0
+save_flag=0
+
+Command line:
+recommender=NoiseSGL
+dataset=amazon-book
+seed=42
+epochs=30
+verbose=1
+stop_cnt=1000
+gpu_id=0
+use_mlc=0
+ssl_anneal=0
+ssl_anneal_epochs=0
+ssl_anneal_floor=0.0
+l2_norm=0
+dropout=0
+noise_deg_gamma=0.0
+embed_size=64
+n_layers=2
+batch_size=256
+lr=0.001
+reg=1e-7
+lightgcl=1
+lightgcl_perlayer=1
+gl_rank=5
+ssl_reg=0.2
+ssl_temp=0.2
+ssl_ratio=0.1
+create_adj_mat function cost: 0.293995s
+2026-10-24 02:35:34.786: [lightgcl] rank=5 svd_time=0.5s energy_frac=0.0022 s_top=[1.0, 0.9570000171661377, 0.9380000233650208, 0.9290000200271606, 0.9049999713897705] perlayer=1
+2026-10-24 02:35:35.313: [view-mix] view_mix=nn (n=noise/e=edge-dropout/g=svd-global)
+2026-10-24 02:35:36.144: metrics:	Precision@20	Recall@20   	NDCG@20     
+2026-10-24 02:42:17.631: [iter 1 : loss : 11.4411 = 0.6715 + 10.7696 + 0.0000, time: 401.485260]
+2026-10-24 02:42:45.890: epoch 1:	0.00044929  	0.00090604  	0.00073766  
+2026-10-24 02:42:45.891: Find a better model.
+2026-10-24 02:49:29.078: [iter 2 : loss : 11.1989 = 0.6586 + 10.5403 + 0.0000, time: 401.935348]
+2026-10-24 02:50:01.331: epoch 2:	0.00039419  	0.00078680  	0.00063576  
+2026-10-24 02:56:44.146: [iter 3 : loss : 11.1565 = 0.6548 + 10.5016 + 0.0000, time: 401.192886]
+2026-10-24 02:57:16.963: epoch 3:	0.00035525  	0.00070028  	0.00057073  
+2026-10-24 03:03:59.128: [iter 4 : loss : 11.1351 = 0.6537 + 10.4813 + 0.0000, time: 400.494322]
+2026-10-24 03:04:31.500: epoch 4:	0.00034955  	0.00068440  	0.00054915  
+2026-10-24 03:11:13.981: [iter 5 : loss : 11.1228 = 0.6535 + 10.4693 + 0.0000, time: 400.812698]
+2026-10-24 03:11:47.228: epoch 5:	0.00034290  	0.00069054  	0.00054696  
+2026-10-24 03:18:29.421: [iter 6 : loss : 11.1110 = 0.6497 + 10.4613 + 0.0000, time: 400.588693]
+2026-10-24 03:19:02.035: epoch 6:	0.00035620  	0.00070755  	0.00057453  
+2026-10-24 03:25:45.001: [iter 7 : loss : 11.1058 = 0.6504 + 10.4554 + 0.0000, time: 401.316517]
+2026-10-24 03:26:17.595: epoch 7:	0.00034195  	0.00068653  	0.00056560  
+2026-10-24 03:32:59.783: [iter 8 : loss : 11.0995 = 0.6476 + 10.4518 + 0.0000, time: 400.583914]
+2026-10-24 03:33:32.068: epoch 8:	0.00034670  	0.00068372  	0.00056843  
+2026-10-24 03:40:14.576: [iter 9 : loss : 11.0954 = 0.6449 + 10.4505 + 0.0000, time: 401.027862]
+2026-10-24 03:40:47.055: epoch 9:	0.00036095  	0.00073343  	0.00059838  
+2026-10-24 03:47:29.241: [iter 10 : loss : 11.0914 = 0.6418 + 10.4496 + 0.0000, time: 400.567415]
+2026-10-24 03:48:01.743: epoch 10:	0.00037235  	0.00075813  	0.00061674  
+2026-10-24 03:54:44.603: [iter 11 : loss : 11.0885 = 0.6385 + 10.4499 + 0.0000, time: 401.304029]
+2026-10-24 03:55:16.996: epoch 11:	0.00037805  	0.00078757  	0.00064669  
+2026-10-24 04:01:59.491: [iter 12 : loss : 11.0844 = 0.6324 + 10.4520 + 0.0000, time: 400.873109]
+2026-10-24 04:02:32.208: epoch 12:	0.00039039  	0.00079871  	0.00065375  
+2026-10-24 04:09:15.196: [iter 13 : loss : 11.0793 = 0.6237 + 10.4556 + 0.0000, time: 401.517350]
+2026-10-24 04:09:47.886: epoch 13:	0.00039799  	0.00080498  	0.00066686  
+2026-10-24 04:16:30.265: [iter 14 : loss : 11.0746 = 0.6138 + 10.4607 + 0.0000, time: 400.812603]
+2026-10-24 04:17:03.047: epoch 14:	0.00041034  	0.00082627  	0.00067013  
+2026-10-24 04:23:45.487: [iter 15 : loss : 11.0694 = 0.6016 + 10.4678 + 0.0000, time: 400.939391]
+2026-10-24 04:24:18.265: epoch 15:	0.00041699  	0.00083285  	0.00068830  
+2026-10-24 04:31:00.298: [iter 16 : loss : 11.0625 = 0.5863 + 10.4761 + 0.0000, time: 400.428490]
+2026-10-24 04:31:32.809: epoch 16:	0.00041984  	0.00082572  	0.00068974  
+2026-10-24 04:38:14.583: [iter 17 : loss : 11.0560 = 0.5701 + 10.4859 + 0.0000, time: 400.272076]
+2026-10-24 04:38:47.103: epoch 17:	0.00043219  	0.00085716  	0.00070753  
+2026-10-24 04:45:29.318: [iter 18 : loss : 11.0459 = 0.5509 + 10.4950 + 0.0000, time: 400.700428]
+2026-10-24 04:46:01.383: epoch 18:	0.00043124  	0.00086462  	0.00070759  
+2026-10-24 04:52:44.103: [iter 19 : loss : 11.0366 = 0.5317 + 10.5049 + 0.0000, time: 401.169353]
+2026-10-24 04:53:16.899: epoch 19:	0.00042839  	0.00086092  	0.00071879  
+2026-10-24 04:59:59.343: [iter 20 : loss : 11.0301 = 0.5165 + 10.5136 + 0.0000, time: 400.919447]
+2026-10-24 05:00:32.204: epoch 20:	0.00042934  	0.00084640  	0.00070696  
+2026-10-24 05:07:14.655: [iter 21 : loss : 11.0228 = 0.5015 + 10.5213 + 0.0000, time: 400.855659]
+2026-10-24 05:07:47.032: epoch 21:	0.00043314  	0.00083500  	0.00070738  
+2026-10-24 05:14:28.898: [iter 22 : loss : 11.0163 = 0.4887 + 10.5276 + 0.0000, time: 400.347279]
+2026-10-24 05:15:01.610: epoch 22:	0.00044169  	0.00085143  	0.00071730  
+2026-10-24 05:21:44.127: [iter 23 : loss : 11.0088 = 0.4755 + 10.5334 + 0.0000, time: 401.013068]
+2026-10-24 05:22:17.129: epoch 23:	0.00044454  	0.00084617  	0.00072258  
+2026-10-24 05:28:59.262: [iter 24 : loss : 11.0062 = 0.4685 + 10.5378 + 0.0000, time: 400.630901]
+2026-10-24 05:29:31.973: epoch 24:	0.00044929  	0.00084913  	0.00072548  
+2026-10-24 05:36:14.668: [iter 25 : loss : 10.9984 = 0.4569 + 10.5415 + 0.0000, time: 401.181848]
+2026-10-24 05:36:47.299: epoch 25:	0.00044834  	0.00083260  	0.00071938  
+2026-10-24 05:43:29.623: [iter 26 : loss : 10.9966 = 0.4518 + 10.5447 + 0.0000, time: 400.827481]
+2026-10-24 05:44:01.854: epoch 26:	0.00044644  	0.00083355  	0.00072210  
+2026-10-24 05:50:44.110: [iter 27 : loss : 10.9903 = 0.4434 + 10.5469 + 0.0000, time: 400.719047]
+2026-10-24 05:51:17.128: epoch 27:	0.00044074  	0.00081772  	0.00071444  
+2026-10-24 05:57:59.633: [iter 28 : loss : 10.9878 = 0.4384 + 10.5494 + 0.0000, time: 400.953017]
+2026-10-24 05:58:32.034: epoch 28:	0.00044549  	0.00080852  	0.00071653  
+2026-10-24 06:05:14.745: [iter 29 : loss : 10.9863 = 0.4355 + 10.5508 + 0.0000, time: 401.328511]
+2026-10-24 06:05:47.470: epoch 29:	0.00045024  	0.00081509  	0.00072086  
+2026-10-24 06:12:29.083: [iter 30 : loss : 10.9820 = 0.4292 + 10.5527 + 0.0000, time: 400.150329]
+2026-10-24 06:13:02.091: epoch 30:	0.00046163  	0.00084731  	0.00073598  
+2026-10-24 06:13:02.091: best_result@epoch 1:
+
+2026-10-24 06:13:02.091: 		0.0004      	0.0009      	0.0007      
