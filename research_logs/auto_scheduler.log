@@ -35,3 +35,10 @@ reckit/__pycache__/
 sent 7,284 bytes  received 65 bytes  14,698.00 bytes/sec
 total size is 5,906,250  speedup is 803.68
 [2026-10-25 02:25:47] queue head: dgcf/amazon-book
+===== auto_scheduler BEGIN 2026年 10月 25日 星期日 03:36:48 CST =====
+[2026-10-25 03:36:48] rsync code -> scnumath (exclude dataset/research_logs/.git)
+sending incremental file list
+
+sent 7,273 bytes  received 56 bytes  4,886.00 bytes/sec
+total size is 5,940,137  speedup is 810.50
+[2026-10-25 03:36:49] queue head: dgcf/amazon-book

@@ -176,10 +176,14 @@ sync_code
 # 若 state 文件不存在则建空
 [ -f "$STATE" ] || : > "$STATE"
 
-# 清理本机/scnumath 上全部残留 DONE 标记（队列是全新 12 任务，旧标记无意义）
+# 建 DONE 目录（本机 + scnumath）。⚠️ 不清理残留 DONE 标记——R120 修复：
+# 原「rm -f *.DONE」会在调度器重启时清掉「停机期间已完成任务」的 DONE 标记，
+# 使该任务永远不被 harvest（state 非空 → ALLDONE 永不触发 → 死锁）。
+# 正确做法：DONE 标记由 runner 自清理（启动前 rm -f 自己的 DONE）+ dispatch 派发
+# 前按 key 清理；停机期间完成的 state 任务，由主循环第 1 步（harvest）在重启后
+# 首个迭代自动采集，无需清标记。
 mkdir -p "$DONEDIR"
-rm -f "$DONEDIR"/*.DONE "$DONEDIR"/*.launch.out 2>/dev/null
-ssh $SSHOPT "$SCN" "mkdir -p ~/SGL-Torch/research_logs/scheduler_done && rm -f ~/SGL-Torch/research_logs/scheduler_done/*.DONE ~/SGL-Torch/research_logs/scheduler_done/*.launch.out" 2>/dev/null
+ssh $SSHOPT "$SCN" "mkdir -p ~/SGL-Torch/research_logs/scheduler_done" 2>/dev/null
 
 log "queue head: $(head -1 "$QUEUE" | awk '{print $1"/"$2}')"
 
