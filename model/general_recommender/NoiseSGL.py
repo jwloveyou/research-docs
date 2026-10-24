@@ -104,6 +104,20 @@ class _LightGCN(nn.Module):
         # rather than as an extra training loss (avoids the R9 slow-convergence pitfall).
         # Default 0 = off (backward compatible).
         self.l2_norm = False
+        # Round-118: post-training (eval-time) item-norm calibration toward a degree
+        # prior (RecSys'24 'Post-Training Embedding Enhancement for Long-Tail
+        # Recommendation' DOI 10.1145/3627673.3679978; KDD'25 PRISM arXiv:2505.11318;
+        # KDD'26 analytical vector decomposition). norm_calib_beta=0.0 keeps the
+        # learned item norms (backward compatible); beta>0 pulls each item's embedding
+        # magnitude toward log(deg_i+2) (relative, scale-invariant) at EVAL time only
+        # (post-training). Motivation: tail items' norms are 'less reflective of actual
+        # popularity' than head items' (RecSys'24), while the norm itself carries the
+        # popularity signal (our R23: removing it costs -11%~-28%). This RESCALES
+        # (denoises) the norm toward the degree prior instead of REMOVING it (R23
+        # cosine) or pre-encoding it at INIT (R113/R115). Static, parameter-free,
+        # orthogonal to noise (R1) / SSL anneal (R15) / capacity (R18) / semantic (R47).
+        self.norm_calib_beta = 0.0
+        self.item_degree = None
         # Round-3: SimGCF frequency-signal-scaler layer weights (None -> uniform mean).
         self.freq_alphas = None
         self.freq_flip = False
@@ -1500,6 +1514,18 @@ class _LightGCN(nn.Module):
             return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
+        if self.norm_calib_beta != 0.0 and self.item_degree is not None:
+            # Round-118: eval-time (post-training) degree-prior item-norm calibration.
+            # target = log(deg+2) relative prior (mean-normalised); cur = relative
+            # learned norm (mean-normalised); scale = 1 + beta*(target/cur - 1).
+            # beta=0 is a strict no-op; beta=1 fully snaps each item norm to the prior.
+            prior = torch.log(self.item_degree + 2.0)
+            target = prior / prior.mean()
+            cur = self._item_embeddings_final.norm(dim=1, keepdim=True).clamp(min=1e-12)
+            cur = cur / cur.mean()
+            ratio = target.view(-1, 1) / cur
+            scale = 1.0 + self.norm_calib_beta * (ratio - 1.0)
+            self._item_embeddings_final = self._item_embeddings_final * scale
         if self.l2_norm:
             self._user_embeddings_final = F.normalize(self._user_embeddings_final, dim=1)
             self._item_embeddings_final = F.normalize(self._item_embeddings_final, dim=1)
@@ -1578,6 +1604,7 @@ class NoiseSGL(AbstractRecommender):
         # learnable parameters (R1/R15/R18 'static wins' law); orthogonal to noise /
         # SSL anneal / capacity / semantic / init_scale / init_pop_gamma.
         self.init_prism_alpha = float(config["init_prism_alpha"]) if "init_prism_alpha" in config else -1.0
+        self.norm_calib_beta = float(config["norm_calib_beta"]) if "norm_calib_beta" in config else 0.0
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
         # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
@@ -2090,6 +2117,13 @@ class NoiseSGL(AbstractRecommender):
 
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
+        self.lightgcn.norm_calib_beta = self.norm_calib_beta
+        if self.norm_calib_beta != 0.0:
+            self.lightgcn.item_degree = torch.from_numpy(
+                item_degree.astype(np.float32)).to(self.device)
+            self.logger.info("[norm-calib] beta=%.3f item_degree loaded (n=%d, min/max=%.1f/%.1f)" % (
+                self.norm_calib_beta, self.num_items, float(item_degree.min()),
+                float(item_degree.max())))
         if self.sem_emb:
             # Round-47: load the frozen semantic item features and attach them to the
             # _LightGCN module as a plain (non-Parameter) tensor. Must be created on
