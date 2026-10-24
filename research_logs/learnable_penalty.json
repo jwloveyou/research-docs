@@ -1,0 +1,336 @@
+{
+  "rows": [
+    {
+      "dataset": "gowalla",
+      "baseline": "lightgcn",
+      "learnable": false,
+      "peak_recall": 0.1761,
+      "epoch_to_peak": 296,
+      "budget": 300,
+      "still_climbing": true,
+      "conv_vs_lgn": 1.0,
+      "peak_vs_lgn": 1.0
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "sgl",
+      "learnable": false,
+      "peak_recall": 0.1788,
+      "epoch_to_peak": 28,
+      "budget": 150,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.09,
+      "peak_vs_lgn": 1.015
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "simgcl",
+      "learnable": false,
+      "peak_recall": 0.1781,
+      "epoch_to_peak": 18,
+      "budget": 150,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.06,
+      "peak_vs_lgn": 1.011
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "xsimgcl",
+      "learnable": false,
+      "peak_recall": 0.1751,
+      "epoch_to_peak": 23,
+      "budget": 150,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.08,
+      "peak_vs_lgn": 0.994
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "hccf",
+      "learnable": true,
+      "peak_recall": 0.1061,
+      "epoch_to_peak": 34,
+      "budget": 150,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.11,
+      "peak_vs_lgn": 0.602
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "dccf",
+      "learnable": true,
+      "peak_recall": 0.1403,
+      "epoch_to_peak": 9,
+      "budget": 150,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.03,
+      "peak_vs_lgn": 0.797
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "adagcl",
+      "learnable": true,
+      "peak_recall": 0.1271,
+      "epoch_to_peak": 3,
+      "budget": 100,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.01,
+      "peak_vs_lgn": 0.722
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "ngcf",
+      "learnable": true,
+      "peak_recall": 0.1406,
+      "epoch_to_peak": 338,
+      "budget": 400,
+      "still_climbing": true,
+      "conv_vs_lgn": 1.14,
+      "peak_vs_lgn": 0.798
+    },
+    {
+      "dataset": "gowalla",
+      "baseline": "lightgcl",
+      "learnable": true,
+      "peak_recall": 0.0423,
+      "epoch_to_peak": 138,
+      "budget": 150,
+      "still_climbing": true,
+      "conv_vs_lgn": 0.47,
+      "peak_vs_lgn": 0.24
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "lightgcn",
+      "learnable": false,
+      "peak_recall": 0.055,
+      "epoch_to_peak": 100,
+      "budget": 100,
+      "still_climbing": true,
+      "conv_vs_lgn": 1.0,
+      "peak_vs_lgn": 1.0
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "sgl",
+      "learnable": false,
+      "peak_recall": 0.0671,
+      "epoch_to_peak": 20,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.2,
+      "peak_vs_lgn": 1.22
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "simgcl",
+      "learnable": false,
+      "peak_recall": 0.0676,
+      "epoch_to_peak": 14,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.14,
+      "peak_vs_lgn": 1.229
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "xsimgcl",
+      "learnable": false,
+      "peak_recall": 0.0655,
+      "epoch_to_peak": 14,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.14,
+      "peak_vs_lgn": 1.191
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "hccf",
+      "learnable": true,
+      "peak_recall": 0.0379,
+      "epoch_to_peak": 68,
+      "budget": 50,
+      "still_climbing": true,
+      "conv_vs_lgn": 0.68,
+      "peak_vs_lgn": 0.689
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "dccf",
+      "learnable": true,
+      "peak_recall": 0.0537,
+      "epoch_to_peak": 5,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.05,
+      "peak_vs_lgn": 0.976
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "adagcl",
+      "learnable": true,
+      "peak_recall": 0.0466,
+      "epoch_to_peak": 3,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.03,
+      "peak_vs_lgn": 0.847
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "ngcf",
+      "learnable": true,
+      "peak_recall": 0.051,
+      "epoch_to_peak": 354,
+      "budget": 400,
+      "still_climbing": true,
+      "conv_vs_lgn": 3.54,
+      "peak_vs_lgn": 0.927
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "lightgcl",
+      "learnable": true,
+      "peak_recall": 0.0126,
+      "epoch_to_peak": 2,
+      "budget": 50,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.02,
+      "peak_vs_lgn": 0.229
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "lightgcn",
+      "learnable": false,
+      "peak_recall": 0.0354,
+      "epoch_to_peak": 99,
+      "budget": 100,
+      "still_climbing": true,
+      "conv_vs_lgn": 1.0,
+      "peak_vs_lgn": 1.0
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "sgl",
+      "learnable": false,
+      "peak_recall": 0.0461,
+      "epoch_to_peak": 21,
+      "budget": 30,
+      "still_climbing": true,
+      "conv_vs_lgn": 0.21,
+      "peak_vs_lgn": 1.302
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "simgcl",
+      "learnable": false,
+      "peak_recall": 0.0462,
+      "epoch_to_peak": 20,
+      "budget": 30,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.2,
+      "peak_vs_lgn": 1.305
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "xsimgcl",
+      "learnable": false,
+      "peak_recall": 0.045,
+      "epoch_to_peak": 19,
+      "budget": 30,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.19,
+      "peak_vs_lgn": 1.271
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "hccf",
+      "learnable": true,
+      "peak_recall": 0.0107,
+      "epoch_to_peak": 80,
+      "budget": 30,
+      "still_climbing": true,
+      "conv_vs_lgn": 0.81,
+      "peak_vs_lgn": 0.302
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "dccf",
+      "learnable": true,
+      "peak_recall": 0.0364,
+      "epoch_to_peak": 6,
+      "budget": 30,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.06,
+      "peak_vs_lgn": 1.028
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "adagcl",
+      "learnable": true,
+      "peak_recall": 0.0265,
+      "epoch_to_peak": 5,
+      "budget": 30,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.05,
+      "peak_vs_lgn": 0.749
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "ngcf",
+      "learnable": true,
+      "peak_recall": 0.0303,
+      "epoch_to_peak": 198,
+      "budget": 200,
+      "still_climbing": true,
+      "conv_vs_lgn": 2.0,
+      "peak_vs_lgn": 0.856
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "lightgcl",
+      "learnable": true,
+      "peak_recall": 0.0009,
+      "epoch_to_peak": 1,
+      "budget": 30,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.01,
+      "peak_vs_lgn": 0.025
+    }
+  ],
+  "fusion": [
+    {
+      "dataset": "gowalla",
+      "baseline": "FUSION-emb512",
+      "learnable": false,
+      "peak_recall": 0.1894,
+      "epoch_to_peak": 29,
+      "budget": 200,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.1,
+      "peak_vs_lgn": 1.076
+    },
+    {
+      "dataset": "yelp2018",
+      "baseline": "FUSION-emb512",
+      "learnable": false,
+      "peak_recall": 0.0716,
+      "epoch_to_peak": 4,
+      "budget": 200,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.04,
+      "peak_vs_lgn": 1.302
+    },
+    {
+      "dataset": "amazon-book",
+      "baseline": "FUSION-emb512",
+      "learnable": false,
+      "peak_recall": 0.0589,
+      "epoch_to_peak": 15,
+      "budget": 200,
+      "still_climbing": false,
+      "conv_vs_lgn": 0.15,
+      "peak_vs_lgn": 1.664
+    }
+  ]
+}
