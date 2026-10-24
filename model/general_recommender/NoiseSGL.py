@@ -1549,6 +1549,22 @@ class NoiseSGL(AbstractRecommender):
         # xavier_uniform bound (sqrt(6/(fan_in+fan_out))) was never tuned for the
         # noise-SSL backbone. Scan {0.5, 1.0, 2.0, 5.0} on gowalla embed256 60ep.
         self.init_scale = float(config["init_scale"]) if "init_scale" in config else 1.0
+        # Round-113: popularity-aware embedding magnitude initialization (component
+        # candidate #21, initialization axis). init_pop_gamma=0.0 keeps the standard
+        # initializer output (backward compatible); >0 / <0 pre-encodes popularity into
+        # the layer-0 embedding *norm* right after reset_parameters:
+        #   c_u = deg_u / max(deg_u),  c_i = deg_i / max(deg_i)
+        #   scale_u = 1 + gamma*(c_u - mean(c_u))   (same for items)
+        # i.e. higher-degree (popular) nodes get a larger initial embedding magnitude,
+        # mirroring the norm~popularity structure that BPR / weight decay would otherwise
+        # learn during training (KDD'25 PRISM arXiv:2505.11318; KDD'26 analytical vector
+        # decomposition; our own R23 L2-norm ablation where removing the norm removed the
+        # popularity signal and cost -11%~-28%). Linear centering (not power-law) keeps
+        # the max scale bounded (~1+gamma, vs the ~50x blow-up of a degree power-law on
+        # yelp2018, R28 lesson). Static, zero learnable parameters (R1/R15/R18 'static
+        # wins' law); orthogonal to noise (R1) / SSL anneal (R15) / capacity (R18) /
+        # semantic (R47) and to the UNIFORM init_scale (R60, scales all rows equally).
+        self.init_pop_gamma = float(config["init_pop_gamma"]) if "init_pop_gamma" in config else 0.0
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
         # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
@@ -2372,6 +2388,27 @@ class NoiseSGL(AbstractRecommender):
                 self.lightgcn.user_embeddings.weight.mul_(self.init_scale)
                 self.lightgcn.item_embeddings.weight.mul_(self.init_scale)
             self.logger.info("[init-scale] init_scale=%.3f applied to user/item layer-0 embeddings" % self.init_scale)
+        if self.init_pop_gamma != 0.0:
+            # Popularity-aware embedding magnitude init (PRISM-style, KDD'25). Degrees
+            # come from the *training* interactions only (same protocol as every other
+            # static pre-computation here), so no test-set leakage.
+            ui_pairs = self.dataset.train_data.to_user_item_pairs()
+            deg_u = np.bincount(ui_pairs[:, 0], minlength=self.num_users).astype(np.float64)
+            deg_i = np.bincount(ui_pairs[:, 1], minlength=self.num_items).astype(np.float64)
+            cu = deg_u / max(deg_u.max(), 1.0)
+            ci = deg_i / max(deg_i.max(), 1.0)
+            su = 1.0 + self.init_pop_gamma * (cu - cu.mean())
+            si = 1.0 + self.init_pop_gamma * (ci - ci.mean())
+            with torch.no_grad():
+                self.lightgcn.user_embeddings.weight.mul_(
+                    torch.from_numpy(su).float().to(self.device).view(-1, 1))
+                self.lightgcn.item_embeddings.weight.mul_(
+                    torch.from_numpy(si).float().to(self.device).view(-1, 1))
+            self.logger.info(
+                "[init-pop] gamma=%.3f user_scale[min/mean/max]=%.4f/%.4f/%.4f "
+                "item_scale[min/mean/max]=%.4f/%.4f/%.4f" % (
+                    self.init_pop_gamma, su.min(), su.mean(), su.max(),
+                    si.min(), si.mean(), si.max()))
         if self.adagcl:
             # AdaGCL uses THREE optimisers (official Main.py): opt (main embeddings),
             # opt_gen_1 (VGAE generator), opt_gen_2 (denoising generator, with its own
