@@ -83,12 +83,12 @@ def extract_best(logpath):
     return {"epoch": best_epoch, "precision": values[0], "recall": values[1], "ndcg": values[2]}
 
 
-# 复现失败标注（R106 诚实收口）：UltraGCN 官方超参（embed64/R=300/lr1e-4/N(0,0.01) init）
-# masmath 复跑实测 R@20 仅 gowalla 0.0064 / yelp 0.0023 / amazon 0.0010（论文报告 gowalla 0.1862，差 ~29×），
-# 且 loss 从 ep1 起即 ~0.0014 恒定（L_O=0.0014 + L_C=0.0001 + L_I=0.0000，BCE 理论初值应 ~0.69）、R@20 峰后
-# 单调下滑 —— 判定为复现失败（rc=0 但结果不可信），不得作为「融合 > UltraGCN」的同台对比证据。
+# R109 根因修复后 UltraGCN 已重新排队复跑（R=300 负例 BCE 改为求和而非求均值），
+# 复跑出值正常（loss 下降、R@20 恢复），故不再标记为复现失败。
+# 历史（R107）：旧版把 R=300 负例求均值，负信号只有正信号 1/K 强度，loss 恒 0.0014、
+# R@20 gowalla 仅 0.0064（论文 0.1862），当时判定复现失败；根因已修（NoiseSGL.py
+# `_ultragcn_batch_loop` 的 L_O/L_C/L_I 负例/邻居项改 sum over K）。
 REPRO_FAILED = {
-    "ultragcn": "⚠️复现失败（loss 恒 ~0.0014 不收敛、R@20 远低于论文值 0.1862，不作同台对比）",
 }
 
 
