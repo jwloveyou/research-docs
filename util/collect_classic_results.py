@@ -83,10 +83,22 @@ def extract_best(logpath):
     return {"epoch": best_epoch, "precision": values[0], "recall": values[1], "ndcg": values[2]}
 
 
-def fmt_cell(rec):
+# 复现失败标注（R106 诚实收口）：UltraGCN 官方超参（embed64/R=300/lr1e-4/N(0,0.01) init）
+# masmath 复跑实测 R@20 仅 gowalla 0.0064 / yelp 0.0023 / amazon 0.0010（论文报告 gowalla 0.1862，差 ~29×），
+# 且 loss 从 ep1 起即 ~0.0014 恒定（L_O=0.0014 + L_C=0.0001 + L_I=0.0000，BCE 理论初值应 ~0.69）、R@20 峰后
+# 单调下滑 —— 判定为复现失败（rc=0 但结果不可信），不得作为「融合 > UltraGCN」的同台对比证据。
+REPRO_FAILED = {
+    "ultragcn": "⚠️复现失败（loss 恒 ~0.0014 不收敛、R@20 远低于论文值 0.1862，不作同台对比）",
+}
+
+
+def fmt_cell(tag, rec):
     if rec is None:
         return "—"
-    return f"{rec['recall']:.4f}/{rec['ndcg']:.4f}@ep{rec['epoch']}"
+    cell = f"{rec['recall']:.4f}/{rec['ndcg']:.4f}@ep{rec['epoch']}"
+    if tag in REPRO_FAILED:
+        cell += " ⚠️复现失败"
+    return cell
 
 
 def build_table(results):
@@ -99,7 +111,7 @@ def build_table(results):
     for ds in DATASETS:
         cells = [ds]
         for tag in TAGS:
-            cells.append(fmt_cell(results.get(f"{ds}_{tag}")))
+            cells.append(fmt_cell(tag, results.get(f"{ds}_{tag}")))
         f = FUSION[ds]
         cells.append(f"**{f['r']:.4f}/{f['n']:.4f}**@ep{f['ep']}")
         lines.append("| " + " | ".join(cells) + " |")
@@ -107,6 +119,10 @@ def build_table(results):
     lines.append("（维度/层数/batch 均按各自官方超参；RecDCL=embed2048/2层，其余经典=embed64。epoch 数："
                  "LightGCL 150/50/30、NGCF 400/400/200、UltraGCN 150/100/100、DGCF 200/100/100、"
                  "NCL 200/100/100、DirectAU 300/100/100、RecDCL 150/50/30，均为 gowalla/yelp2018/amazon-book。）")
+    lines.append("")
+    for tag in TAGS:
+        if tag in REPRO_FAILED:
+            lines.append(f"- ⚠️ **{tag} 复现失败（诚实标注）**：{REPRO_FAILED[tag]}。")
     lines.append("")
     return "\n".join(lines)
 
@@ -118,6 +134,8 @@ def build_conclusion(results):
         wins = []
         loses = []
         for tag in TAGS:
+            if tag in REPRO_FAILED:
+                continue  # 复现失败，不纳入同台胜负对比
             rec = results.get(f"{ds}_{tag}")
             if rec is None:
                 continue
@@ -198,7 +216,7 @@ def main():
         for tag in TAGS:
             key = f"{ds}_{tag}"
             rec = results[key]
-            print(f"  {key:26s} {'DONE ' + fmt_cell(rec) if rec else 'MISSING/FAILED'}")
+            print(f"  {key:26s} {'DONE ' + fmt_cell(tag, rec) if rec else 'MISSING/FAILED'}")
     print(f"done={n_done}/{n_total}")
 
     if n_done < n_total:
