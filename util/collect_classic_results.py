@@ -91,13 +91,39 @@ def extract_best(logpath):
 REPRO_FAILED = {
 }
 
+# UltraGCN 论文报告值（arXiv:2110.15114 Table 2，R117 从 ar5iv 原文逐项核；
+# 论文明写「closely follow GCN-based CF studies、同数据切分」，故与 LightGCN 官方
+# 切分可比）——R@20/NDCG@20。用于 sanity_flag 自动标注「复跑值显著低于论文值」。
+PAPER_REF = {
+    "ultragcn": {
+        "gowalla":     (0.1862, 0.1580),
+        "yelp2018":    (0.0683, 0.0561),
+        "amazon-book": (0.0681, 0.0556),
+    },
+}
 
-def fmt_cell(tag, rec):
+
+def sanity_flag(tag, ds, rec):
+    """UltraGCN 复跑值显著低于其论文报告值（<50%）时自动加诚实标注，
+    提示后续轮人工核 eval/init 协议差异，避免「复现失败被当作同台胜出」的假赢。"""
+    if rec is None or tag not in PAPER_REF:
+        return ""
+    pr, _pn = PAPER_REF[tag].get(ds, (None, None))
+    if pr is None:
+        return ""
+    if rec["recall"] < 0.5 * pr:
+        return " ⚠️低于论文值"
+    return ""
+
+
+def fmt_cell(tag, ds, rec):
     if rec is None:
         return "—"
     cell = f"{rec['recall']:.4f}/{rec['ndcg']:.4f}@ep{rec['epoch']}"
     if tag in REPRO_FAILED:
         cell += " ⚠️复现失败"
+    else:
+        cell += sanity_flag(tag, ds, rec)
     return cell
 
 
@@ -111,7 +137,7 @@ def build_table(results):
     for ds in DATASETS:
         cells = [ds]
         for tag in TAGS:
-            cells.append(fmt_cell(tag, results.get(f"{ds}_{tag}")))
+            cells.append(fmt_cell(tag, ds, results.get(f"{ds}_{tag}")))
         f = FUSION[ds]
         cells.append(f"**{f['r']:.4f}/{f['n']:.4f}**@ep{f['ep']}")
         lines.append("| " + " | ".join(cells) + " |")
@@ -119,6 +145,10 @@ def build_table(results):
     lines.append("（维度/层数/batch 均按各自官方超参；RecDCL=embed2048/2层，其余经典=embed64。epoch 数："
                  "LightGCL 150/50/30、NGCF 400/400/200、UltraGCN 150/100/100、DGCF 200/100/100、"
                  "NCL 200/100/100、DirectAU 300/100/100、RecDCL 150/50/30，均为 gowalla/yelp2018/amazon-book。）")
+    lines.append("")
+    lines.append("（UltraGCN 论文报告值（arXiv:2110.15114 Table 2，同数据切分）：gowalla 0.1862/0.1580、"
+                 "yelp2018 0.0683/0.0561、amazon-book 0.0681/0.0556；表中「⚠️低于论文值」= 复跑值 < 论文值 50%，"
+                 "提示疑似复现问题、需人工核 eval/init 协议差异，不参与「融合 > 该 baseline」的同台胜负判定。）")
     lines.append("")
     for tag in TAGS:
         if tag in REPRO_FAILED:
@@ -137,6 +167,8 @@ def build_conclusion(results):
             if tag in REPRO_FAILED:
                 continue  # 复现失败，不纳入同台胜负对比
             rec = results.get(f"{ds}_{tag}")
+            if sanity_flag(tag, ds, rec):
+                continue  # 复跑值显著低于论文值（疑似复现问题），不纳入同台胜负对比
             if rec is None:
                 continue
             if f["r"] > rec["recall"]:
@@ -216,7 +248,7 @@ def main():
         for tag in TAGS:
             key = f"{ds}_{tag}"
             rec = results[key]
-            print(f"  {key:26s} {'DONE ' + fmt_cell(tag, rec) if rec else 'MISSING/FAILED'}")
+            print(f"  {key:26s} {'DONE ' + fmt_cell(tag, ds, rec) if rec else 'MISSING/FAILED'}")
     print(f"done={n_done}/{n_total}")
 
     if n_done < n_total:
