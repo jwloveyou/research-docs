@@ -2919,34 +2919,43 @@ class NoiseSGL(AbstractRecommender):
             pos = (u_emb * i_emb).sum(-1)                              # [B]
             # R negative items per positive pair (paper R=300; driven by our
             # num_negatives config via _multi_neg_sampler). num_negatives=1 yields the
-            # original [B] shape; num_negatives>1 yields [B, K] so the negative BCE is
-            # averaged over K candidates (each negative carries 1/K of a positive's
-            # weight, so R negatives collectively balance one positive).
+            # original [B] shape; num_negatives>1 yields [B, K]. The paper's eq.13/12
+            # SUM the R sampled negatives (each negative carries full weight) -- NOT
+            # average them. Averaging makes the negative signal 1/K as strong and
+            # UltraGCN degenerates to a weak single-negative BCE (R107 reproduction
+            # failure: loss stuck at init ~0.69, R@20 ~0.006 vs paper 0.1862).
             if bat_neg_items.dim() == 1:
                 j_emb = self.lightgcn.item_embeddings(bat_neg_items)   # [B, d]
                 neg = (u_emb * j_emb).sum(-1)                          # [B]
                 beta_neg = fu[bat_users] * fi[bat_neg_items]           # [B]
                 neg_flat = bat_neg_items
+                neg_logsig = F.logsigmoid(-neg)                        # [B]
+                neg_logsig_sum = neg_logsig
+                beta_neg_sum = beta_neg * neg_logsig
             else:
                 B, K = bat_neg_items.shape
                 j_emb = self.lightgcn.item_embeddings(bat_neg_items)   # [B, K, d]
                 neg = (u_emb.unsqueeze(1) * j_emb).sum(-1)             # [B, K]
                 beta_neg = fu[bat_users].unsqueeze(1) * fi[bat_neg_items]  # [B, K]
                 neg_flat = bat_neg_items.reshape(-1)
+                neg_logsig = F.logsigmoid(-neg)                        # [B, K]
+                neg_logsig_sum = neg_logsig.sum(dim=1)                 # [B] -- R negatives summed
+                beta_neg_sum = (beta_neg * neg_logsig).sum(dim=1)      # [B]
             # L_O: pointwise BCE over observed + R sampled-negative pairs (paper eq. 13).
-            loss_o = -F.logsigmoid(pos).mean() - F.logsigmoid(-neg).mean()
+            loss_o = -F.logsigmoid(pos).mean() - neg_logsig_sum.mean()
             # L_C: degree-weighted constraint loss (paper eq. 12),
             # beta_{u,i} = (1/d_u)*sqrt((d_u+1)/(d_i+1)) = fu[u]*fi[i].
             beta_pos = fu[bat_users] * fi[bat_pos_items]
-            loss_c = -(beta_pos * F.logsigmoid(pos)).mean() - (beta_neg * F.logsigmoid(-neg)).mean()
-            # L_I: item-item co-occurrence constraint (paper eq. 17).
+            loss_c = -(beta_pos * F.logsigmoid(pos)).mean() - beta_neg_sum.mean()
+            # L_I: item-item co-occurrence constraint (paper eq. 17, summed over the K
+            # neighbours like eq.13/12 -- not meaned over K).
             nb = ii_nb[bat_pos_items]                                  # [B, K]
             wt = ii_wt[bat_pos_items]                                  # [B, K]
             nb_safe = nb.clamp(min=0)
             nb_emb = self.lightgcn.item_embeddings(nb_safe)            # [B, K, d]
             nb_score = (u_emb.unsqueeze(1) * nb_emb).sum(-1)           # [B, K]
             mask = (nb >= 0).float() * (wt > 0).float()
-            loss_i = -torch.mean(mask * wt * F.logsigmoid(nb_score))
+            loss_i = -torch.sum(mask * wt * F.logsigmoid(nb_score), dim=1).mean()
             loss = loss_o + self.ultragcn_lambda * loss_c + self.ultragcn_gamma * loss_i
             reg_loss = l2_loss(
                 self.lightgcn.user_embeddings(bat_users),
