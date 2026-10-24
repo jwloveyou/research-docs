@@ -1514,21 +1514,42 @@ class _LightGCN(nn.Module):
             return
         self._user_embeddings_final, self._item_embeddings_final = self._forward_gcn(
             self.norm_adj, use_freq=self.freq_on_main, apply_proto=True)
-        if self.norm_calib_beta != 0.0 and self.item_degree is not None:
-            # Round-118: eval-time (post-training) degree-prior item-norm calibration.
-            # target = log(deg+2) relative prior (mean-normalised); cur = relative
-            # learned norm (mean-normalised); scale = 1 + beta*(target/cur - 1).
-            # beta=0 is a strict no-op; beta=1 fully snaps each item norm to the prior.
-            prior = torch.log(self.item_degree + 2.0)
-            target = prior / prior.mean()
-            cur = self._item_embeddings_final.norm(dim=1, keepdim=True).clamp(min=1e-12)
-            cur = cur / cur.mean()
-            ratio = target.view(-1, 1) / cur
-            scale = 1.0 + self.norm_calib_beta * (ratio - 1.0)
-            self._item_embeddings_final = self._item_embeddings_final * scale
+        # Round-119: keep the pre-calibration item embeddings so an eval-time
+        # norm_calib sweep (norm_calib_sweep) can re-apply different beta without
+        # recomputing the GCN forward. Training is unaffected by beta (eval-time only).
+        self._item_embeddings_base = self._item_embeddings_final
+        self._item_embeddings_final = self._apply_norm_calib(self.norm_calib_beta)
         if self.l2_norm:
             self._user_embeddings_final = F.normalize(self._user_embeddings_final, dim=1)
             self._item_embeddings_final = F.normalize(self._item_embeddings_final, dim=1)
+
+    def _apply_norm_calib(self, beta):
+        # Round-118/119: eval-time (post-training) degree-prior item-norm calibration.
+        # target = log(deg+2) relative prior (mean-normalised); cur = relative learned
+        # norm (mean-normalised); scale = 1 + beta*(target/cur - 1). beta=0 is a strict
+        # no-op (returns the base unchanged); beta=1 snaps each item norm to the degree
+        # prior. The base (_item_embeddings_base) is stored in eval() before any
+        # calibration, so a sweep re-applies beta on the SAME GCN output (training is
+        # unaffected by beta -- calibration is eval-time only).
+        item = self._item_embeddings_base
+        if beta != 0.0 and self.item_degree is not None:
+            prior = torch.log(self.item_degree + 2.0)
+            target = prior / prior.mean()
+            cur = item.norm(dim=1, keepdim=True).clamp(min=1e-12)
+            cur = cur / cur.mean()
+            ratio = target.view(-1, 1) / cur
+            scale = 1.0 + beta * (ratio - 1.0)
+            item = item * scale
+        return item
+
+    def set_norm_calib(self, beta):
+        # Round-119: re-apply the eval-time norm calibration with a different beta
+        # (used by norm_calib_sweep). Mirrors the item-side tail of eval(); the user
+        # side is untouched (calibration only rescales item norms).
+        item = self._apply_norm_calib(beta)
+        if self.l2_norm:
+            item = F.normalize(item, dim=1)
+        self._item_embeddings_final = item
 
 
 class NoiseSGL(AbstractRecommender):
@@ -1605,6 +1626,18 @@ class NoiseSGL(AbstractRecommender):
         # SSL anneal / capacity / semantic / init_scale / init_pop_gamma.
         self.init_prism_alpha = float(config["init_prism_alpha"]) if "init_prism_alpha" in config else -1.0
         self.norm_calib_beta = float(config["norm_calib_beta"]) if "norm_calib_beta" in config else 0.0
+        # Round-119: eval-time beta sweep (norm_calib_sweep="0.0,0.25,0.5,1.0").
+        # Because norm_calib is eval-time only, sweeping beta at eval is exactly
+        # equivalent to separate training runs with different beta (the training is
+        # identical across beta), so it is ~4x cheaper. Empty => no sweep (backward
+        # compatible). Each beta keeps its own best-over-epochs, reported at the end
+        # of train_model.
+        _sweep_raw = config["norm_calib_sweep"] if "norm_calib_sweep" in config else ""
+        if isinstance(_sweep_raw, (list, tuple)):
+            self.norm_calib_sweep = [float(x) for x in _sweep_raw]
+        else:
+            _s = str(_sweep_raw).strip("[]() ")
+            self.norm_calib_sweep = [float(x) for x in _s.split(",") if x.strip()] if _s else []
         # Round-37: learning-rate schedule (4th-component candidate #11). lr_anneal=0
         # keeps the fixed lr (backward compatible); 1 = linear, 2 = cosine decay from
         # self.lr down to self.lr*self.lr_floor over lr_anneal_epochs epochs (0 => full
@@ -2027,6 +2060,8 @@ class NoiseSGL(AbstractRecommender):
         # Other hyper-parameters
         self.best_epoch = 0
         self.best_result = np.zeros([2], dtype=float)
+        # Round-119: per-beta best (R@20/NDCG@20) for the eval-time norm_calib sweep.
+        self.norm_calib_sweep_best = {}
         if self.swa_start > 0:
             self.logger.info("[swa] swa_start=%d (embedding-table weight averaging from this epoch)" % self.swa_start)
 
@@ -2118,12 +2153,12 @@ class NoiseSGL(AbstractRecommender):
         self.lightgcn = _LightGCN(self.num_users, self.num_items, self.emb_size,
                                   adj_matrix, self.n_layers).to(self.device)
         self.lightgcn.norm_calib_beta = self.norm_calib_beta
-        if self.norm_calib_beta != 0.0:
+        if self.norm_calib_beta != 0.0 or len(self.norm_calib_sweep) > 0:
             self.lightgcn.item_degree = torch.from_numpy(
                 item_degree.astype(np.float32)).to(self.device)
-            self.logger.info("[norm-calib] beta=%.3f item_degree loaded (n=%d, min/max=%.1f/%.1f)" % (
-                self.norm_calib_beta, self.num_items, float(item_degree.min()),
-                float(item_degree.max())))
+            self.logger.info("[norm-calib] beta=%.3f sweep=%s item_degree loaded (n=%d, min/max=%.1f/%.1f)" % (
+                self.norm_calib_beta, ",".join("%.2f" % b for b in self.norm_calib_sweep),
+                self.num_items, float(item_degree.min()), float(item_degree.max())))
         if self.sem_emb:
             # Round-47: load the frozen semantic item features and attach them to the
             # _LightGCN module as a plain (non-Parameter) tensor. Must be created on
@@ -3439,6 +3474,16 @@ class NoiseSGL(AbstractRecommender):
                         break
 
         self.logger.info("best_result@epoch %d:\n" % self.best_epoch)
+        # Round-119: report the eval-time norm_calib sweep (each beta's best-over-epochs).
+        if self.norm_calib_sweep:
+            self.logger.info("[norm-calib sweep] beta -> (precision@20, recall@20, ndcg@20) best-over-epochs:")
+            for beta in self.norm_calib_sweep:
+                r = self.norm_calib_sweep_best.get(beta)
+                if r is not None:
+                    self.logger.info("[norm-calib sweep] beta=%.2f -> %s" % (
+                        beta, '\t'.join([("%.4f" % x).ljust(12) for x in r])))
+                else:
+                    self.logger.info("[norm-calib sweep] beta=%.2f -> (no eval)" % beta)
         if self.save_flag:
             self.logger.info('Loading from the saved best model during the training process.')
             self.lightgcn.load_state_dict(torch.load(self.tmp_model_dir))
@@ -3480,6 +3525,19 @@ class NoiseSGL(AbstractRecommender):
             self._swap_in_swa()
         self.lightgcn.eval()
         current_result, buf = self.evaluator.evaluate(self)
+        # Round-119: eval-time norm_calib beta sweep. norm_calib only rescales item
+        # norms at eval, so training is identical across beta; sweeping here is exactly
+        # equivalent to (and ~4x cheaper than) separate training runs. Each beta keeps
+        # its own best-over-epochs (R@20/NDCG@20), reported at the end of train_model.
+        if self.norm_calib_sweep:
+            for beta in self.norm_calib_sweep:
+                self.lightgcn.set_norm_calib(beta)
+                cur, _ = self.evaluator.evaluate(self)
+                if beta not in self.norm_calib_sweep_best or \
+                        self.norm_calib_sweep_best[beta][1] < cur[1]:
+                    self.norm_calib_sweep_best[beta] = cur
+            # restore the default beta for the primary best_result path
+            self.lightgcn.set_norm_calib(self.norm_calib_beta)
         if swa_active:
             self._swap_out_swa()
         if self.best_result[1] < current_result[1]:
