@@ -1,0 +1,46 @@
+{
+ "fusion": {
+  "gowalla": {
+   "recall": 0.1894,
+   "ndcg": 0.1596,
+   "epoch": 29
+  },
+  "yelp2018": {
+   "recall": 0.0716,
+   "ndcg": 0.0587,
+   "epoch": 4
+  },
+  "amazon-book": {
+   "recall": 0.0589,
+   "ndcg": 0.0455,
+   "epoch": 15
+  }
+ },
+ "baselines": {},
+ "summary": {
+  "gowalla": {
+   "fusion_peak": 0.1894,
+   "fusion_epoch": 29,
+   "lightgcn_rerun_peak": 0.1761,
+   "lightgcn_rerun_epoch": 296,
+   "lightgcn_paper_peak": 0.183,
+   "speedup_vs_lgn_epoch": 10.206896551724139
+  },
+  "yelp2018": {
+   "fusion_peak": 0.0716,
+   "fusion_epoch": 4,
+   "lightgcn_rerun_peak": 0.055,
+   "lightgcn_rerun_epoch": 100,
+   "lightgcn_paper_peak": 0.0649,
+   "speedup_vs_lgn_epoch": 25.0
+  },
+  "amazon-book": {
+   "fusion_peak": 0.0589,
+   "fusion_epoch": 15,
+   "lightgcn_rerun_peak": 0.0354,
+   "lightgcn_rerun_epoch": 99,
+   "lightgcn_paper_peak": 0.0411,
+   "speedup_vs_lgn_epoch": 6.6
+  }
+ }
+}
