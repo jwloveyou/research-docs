@@ -1,4 +1,4 @@
-dgcf amazon-book 100 --embed_size=64 --n_layers=3 --batch_size=1024 --lr=0.001 --reg=1e-4 --dgcf=1 --dgcf_n_factors=4 --dgcf_temp=1.0 --dgcf_ind_reg=0.01
+dgcf amazon-book 200 --embed_size=64 --n_layers=3 --batch_size=1024 --lr=0.001 --reg=1e-4 --dgcf=1 --dgcf_n_factors=4 --dgcf_temp=1.0 --dgcf_ind_reg=0.01
 ncl gowalla 200 --embed_size=64 --n_layers=3 --batch_size=4096 --lr=0.002 --reg=1e-4 --ncl=1 --ncl_ssl_reg=1e-6 --ncl_proto_reg=5e-8 --ncl_temp=0.05 --ncl_hyper_layers=1 --ncl_alpha=0.5 --ncl_num_clusters=10 --ncl_m_step=1 --ncl_warm_up=20 --ncl_kmeans_iters=5 --ncl_kmeans_seed=0
 ncl yelp2018 100 --embed_size=64 --n_layers=3 --batch_size=4096 --lr=0.001 --reg=1e-4 --ncl=1 --ncl_ssl_reg=1e-6 --ncl_proto_reg=1e-7 --ncl_temp=0.05 --ncl_hyper_layers=1 --ncl_alpha=1.5 --ncl_num_clusters=2000 --ncl_m_step=1 --ncl_warm_up=20 --ncl_kmeans_iters=5 --ncl_kmeans_seed=0
 ncl amazon-book 100 --embed_size=64 --n_layers=3 --batch_size=4096 --lr=0.001 --reg=1e-6 --ncl=1 --ncl_ssl_reg=1e-6 --ncl_proto_reg=1e-7 --ncl_temp=0.05 --ncl_hyper_layers=1 --ncl_alpha=0.8 --ncl_num_clusters=2000 --ncl_m_step=1 --ncl_warm_up=20 --ncl_kmeans_iters=5 --ncl_kmeans_seed=0

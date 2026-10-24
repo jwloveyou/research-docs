@@ -119,9 +119,13 @@ dispatch() {
   else
     # remote：ssh 里 nohup 后台启动，返回后不阻塞
     local cmd
-    # cd/mkdir 的 stderr 重定向到 /dev/null（否则后台 job 持有 ssh 通道、ssh 卡住不返回），
-    # nohup 的 stdout/stderr 重定向到 launch.out、stdin 重定向 /dev/null（完全脱离 ssh 会话）
-    cmd="cd ~/SGL-Torch 2>/dev/null && mkdir -p research_logs/scheduler_done 2>/dev/null && nohup bash research_logs/_run_baseline_task.sh $gpu $tag $ds $eps $@ > research_logs/scheduler_done/${key}.launch.out 2>&1 < /dev/null &"
+    # R124 修复（关键死锁）：原 cmd 把 `cd && mkdir && nohup ... &` 整条 && 链后台化，
+    # 后台子 shell 的 stdout(fd1) 仍持有 ssh 通道，直到 nohup（训练 ~数小时~17h）结束才
+    # 关闭 → ssh 卡住、调度器阻塞在 do_wait、整条链停摆。
+    # 修正：去掉冗余的 cd/mkdir（_run_baseline_task.sh 内部已 `cd ~/SGL-Torch` + `mkdir -p`），
+    # 只后台化单条 `nohup ... &`（其 fd0/1/2 全部重定向，不持有 ssh 通道），remote shell
+    # 立即退出、ssh 即时返回。绝对路径 + ~ 由 remote shell 展开。
+    cmd="nohup bash ~/SGL-Torch/research_logs/_run_baseline_task.sh $gpu $tag $ds $eps $@ > ~/SGL-Torch/research_logs/scheduler_done/${key}.launch.out 2>&1 < /dev/null &"
     if ssh $SSHOPT "$SCN" "$cmd" 2>/dev/null; then
       echo "${key}|${card}" >> "$STATE"
       echo "START ${ds}_${tag} gpu=$gpu ep=$eps [scheduler:scnumath] $(date)" >> "$PROG"

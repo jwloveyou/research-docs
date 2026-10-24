@@ -143,7 +143,7 @@ def build_table(results):
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("（维度/层数/batch 均按各自官方超参；RecDCL=embed2048/2层，其余经典=embed64。epoch 数："
-                 "LightGCL 150/50/30、NGCF 400/400/200、UltraGCN 150/100/100、DGCF 200/100/100、"
+                 "LightGCL 150/50/30、NGCF 400/400/200、UltraGCN 150/100/100、DGCF 400/200/200、"
                  "NCL 200/100/100、DirectAU 300/100/100、RecDCL 150/50/30，均为 gowalla/yelp2018/amazon-book。）")
     lines.append("")
     lines.append("（UltraGCN 论文报告值（arXiv:2110.15114 Table 2，同数据切分）：gowalla 0.1862/0.1580、"
